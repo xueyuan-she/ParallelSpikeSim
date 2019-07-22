@@ -13,6 +13,7 @@ If you use PSS in your work, please cite this [paper](https://ieeexplore.ieee.or
 
 ## Compile
 Include options: -I/usr/include/boost
+
 library options (-l): opencv_highgui, cudadevert, cublas_device, curand, boost_system, boost_filesystem, cudnn, opencv_imgproc, opencv_core
 
 The latest release was tested on Ubuntu 16.04
