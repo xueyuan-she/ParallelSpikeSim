@@ -34,7 +34,7 @@ int main()
 
 	cout << "================ Welcome to Xueyuan She and YunLong's Biophysical Neural Network Simulator =================" << endl << endl;
 	cout << endl;
-	cout<<"Function Select (4_learning; 5_learning_test_and_draw; 6_generate_template; 7_test_accuracy): ";
+	cout<<"Function Select: ";
 	int mode_select;
 	cin >> mode_select;
 	t_start = clock();
@@ -45,7 +45,12 @@ int main()
 	switch (mode_select){
 
 					//case 0: spiking_learning_label(); break;
-					//case 1: spiking_learning_label("device2_output_network.txt", "device2_output_network_flaged_network_4.csv", 500, 1000, 1, 0); break;
+					case 1:
+					{
+						printf("Case 1 selected/n");
+						spiking_learning_label("device2_output_network.txt", "device2_output_network_flaged_network_4.csv", 500, 1000, 1, 0);
+					}
+					break;
 					//case 2: run_test(); break;
 					//case 3: run_ROI(); break;
 					case 4:
