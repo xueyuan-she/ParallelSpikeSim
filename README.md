@@ -2,7 +2,7 @@
 
 ParallelSpikeSim (PSS) is a GPU accelerated spiking neural network simulator. 
 
-PSS is first introduced in [paper](https://ieeexplore.ieee.org/abstract/document/8714846). Since the introduction, some more functions are added to PSS, including:
+PSS is first introduced in [paper](https://ieeexplore.ieee.org/abstract/document/8714846) (Author: Xueyuan She, Yun Long and Saibal Mukhopadhyay). Since the introduction, some more functions are added to PSS, including:
 
 - Spiking convolutional neural network
 - Frequency-dependent STDP
