@@ -24,6 +24,7 @@ test signal input: 1 4 1 1 0 1 ; 0 0 .
 */
 
 
+
 __global__ void run_spiking_learning (Neuron *NeuronList, Neuron *old_device_neurons, float *random_number, int network_size, float *log_v, float *log_spike, float *log_total_spike, int *spike_flag, int signal_width, int time_stamp){
 	//printf("its in gpu(main)\n");
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
@@ -338,5 +339,9 @@ void spiking_learning_main(Neuron *NeuronList, Neuron *old_device_neurons, float
     run_spiking_learning<<<dimGrid, dimBlock>>>(NeuronList, old_device_neurons, random_number, network_size, log_v, log_spike, log_total_spike, spike_flag, signal_width, time_stamp);
     //printf("inSpikingLearning");
     cudaDeviceSynchronize();
+
+
+
+
 
 }

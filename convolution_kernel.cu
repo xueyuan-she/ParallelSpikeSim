@@ -272,6 +272,8 @@ int convolution_kernel_setup(Convolution_setting_struct *convolution_settings, C
 		output_batch_size = 1;
 		output_height = settings->layer[layer_index+1].depth_list[0].length;
 		output_width = settings->layer[layer_index+1].depth_list[0].width;
+
+		printf("\n=====Input Channel: %d, height: %d, width: %d___output: %d, %d, %d=====\n", input_channel, input_height, input_width, output_channel, output_height, output_width);
 	}
 
 

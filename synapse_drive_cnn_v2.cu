@@ -18,9 +18,9 @@ using namespace std;
 #define BETA_M 3
 #define G_MAX 1
 #define G_MIN 0
-#define STOCH_gamma_pot 0.3
+#define STOCH_gamma_pot 0.7
 #define STOCH_tau_pot 100
-#define STOCH_gamma_dep 0.2
+#define STOCH_gamma_dep 0.6
 #define STOCH_tau_dep 5
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -32,6 +32,10 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
       //if (abort) exit(code);
    }
 }
+
+#define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
+    printf("Error at %s:%d\n",__FILE__,__LINE__); \
+    return EXIT_FAILURE;}} while(0)
 
 __global__ void random_synapse_drive_v1 (float *random_number, int rand_number_size, curandState_t *state){
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
@@ -46,7 +50,74 @@ __global__ void random_synapse_drive_v1 (float *random_number, int rand_number_s
 
 }
 
-__global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, int index, CNN_struct *CNN_setttings, float **filter, int current_layer, int network_size, int input_neuron_size, int connection_size, long two_power, float half_delta_g_step, float *random_number_list_device, float *random_number_normal_device, int neuron_number_per_layer, int start_index, float StochSTDP_param_1, float StochSTDP_param_2){
+
+
+
+__global__ void generate_uniform_kernel(curandState *state, float *result, int filter_size)
+{
+
+	int blockId = blockIdx.x + blockIdx.y * gridDim.x;
+	int id = blockId * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
+	if(id>=filter_size){
+		return;
+	}
+
+    /* Copy state to local memory for efficiency */
+//    curandState localState = state[id];
+    /* Generate pseudo-random uniforms */
+    result[id] = curand_uniform(&state[id]);
+    /* Copy state back to global memory */
+    //printf("-%d: %f -", id, result[id]);
+
+//    state[id] = curand_uniform(state[id]);
+    /* Store results */
+
+}
+
+
+__global__ void copy_filter(Neuron *NeuronList, CNN_struct *CNN_setttings, float **filter, int spiking_neuron_size)
+{
+	//printf("*");
+    int blockId = blockIdx.x + blockIdx.y * gridDim.x;
+    int connection_index = blockId * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
+    if(connection_index>0) return;
+
+
+	int current_layer = 1;
+	int processed_neuron_num = 0;
+	int filter_size_per_depth = CNN_setttings->layer[current_layer].conv_setting.filter_length * CNN_setttings->layer[current_layer].conv_setting.filter_width* CNN_setttings->layer[current_layer].conv_setting.filter_depth;
+	for (int neuron_i=0; neuron_i<spiking_neuron_size; neuron_i++){
+		int connected_in_i = 0;
+		if (neuron_i==processed_neuron_num+CNN_setttings->layer[current_layer].neuron_num){
+			if (current_layer==CNN_total_layer_num-1) return;
+			processed_neuron_num += CNN_setttings->layer[current_layer].neuron_num;
+			current_layer++;
+			filter_size_per_depth = CNN_setttings->layer[current_layer].conv_setting.filter_length * CNN_setttings->layer[current_layer].conv_setting.filter_width* CNN_setttings->layer[current_layer].conv_setting.filter_depth;
+
+		}
+
+		int current_depth = NeuronList[neuron_i].param[7] - CNN_setttings->layer[current_layer].first_depth_id;
+		int filter_index;
+		//printf("neuron id %d, depth is %d, layer is %d (size_per_depth: %d)\n", neuron_i, current_depth, current_layer, filter_size_per_depth);
+		while(NeuronList[neuron_i].connected_in[connected_in_i] > 0.1){
+			filter_index = current_depth*filter_size_per_depth+connected_in_i;
+			if(connected_in_i>=filter_size_per_depth) printf("Error in filter copying: size mismatches\n");
+			filter[current_layer-1][filter_index] = NeuronList[neuron_i].connected_weight[connected_in_i];
+			connected_in_i++;
+			//NeuronList[index].connected_weight[connection_index] = filter[current_layer-1][filter_index];
+			//printf("%f-", filter[current_layer-1][filter_index]);
+			//if(filter[current_layer-1][filter_index]>2) printf("$$ %d-%d is at %f", index, connection_index, filter[current_layer-1][filter_index]);
+		}
+	}
+
+
+
+
+}
+
+__global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, int index, CNN_struct *CNN_setttings, float **filter, int current_layer, int network_size, \
+		int input_neuron_size, int total_neuron_num, int connection_size, long two_power, float half_delta_g_step, float *random_number_list_device, float *random_number_normal_device, \
+		int neuron_number_per_layer, int start_index, float StochSTDP_param_1, float StochSTDP_param_2){
 //    int blockId = blockIdx.x + blockIdx.y * gridDim.x + gridDim.x * gridDim.y * blockIdx.z;
 //    int thread_index = blockId * (blockDim.x * blockDim.y * blockDim.z) + threadIdx.z * (blockDim.y * blockDim.x) + threadIdx.y * blockDim.x + threadIdx.x;
 //    int connection_blockID =
@@ -60,10 +131,11 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 //    int index = thread_index/neuron_number_per_layer;
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
     int connection_index = blockId * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
-    if(connection_index>connection_size) return;
+    if(connection_index>=connection_size) return;
 
 	//index = index + start_index;
 	int random_index = index*MAX_CONNECTION+connection_index;// - start_index;
+	int random_index_uniform = connection_index;// - start_index;
 	//if(connection_index==1) printf("#%d", index);
 
 	if(NeuronList[index].type==4||NeuronList[index].type==5){//if the post-synapse neuron is input-signal-neuron, jump over
@@ -104,14 +176,18 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 	//printf("*");
 
 	float delta_g = 0;
-	if(NeuronList[index].state[2]>0.1){//if post-synapse neuron fired
 
+	if(NeuronList[index].state[2]>0.1){//if post-synapse neuron fired
+		//if(connection_index==1) printf(" %d in STDP check!\n", index);
 			//printf("| %d fired", index);
 			//if(index==1000) printf("%d!", connection_index);
-
+		int filter_index = current_depth*connection_size+connection_index;
+		//printf("Neuron %d: current Depth %d, filter_index %d", index, current_depth, filter_index);
 				if(NeuronList[index].connected_in[connection_index] > 0.1){
 
 					int connected_in = NeuronList[index].connected_in[connection_index] - 1;
+					if(connected_in>=total_neuron_num||connected_in<0) return;
+//					printf("post id: %d, first pre id: %d", index, NeuronList[index].connected_in[0]);
 					float pre_neuron_state_1;
 					float pre_neuron_state_2;
 					float pre_neuron_state_3;
@@ -126,6 +202,7 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 
 						pre_neuron_type = Input_neuronlist[connected_in].type;
 					}else{
+
 						connected_in = connected_in - input_neuron_size;
 						pre_neuron_state_1 = NeuronList[connected_in].state[1];
 						pre_neuron_state_2 = NeuronList[connected_in].state[2];
@@ -133,9 +210,11 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 						pre_neuron_state_4 = NeuronList[connected_in].state[4];
 
 						pre_neuron_type = NeuronList[connected_in].type;
+
 					}
 //					printf("$%d$", pre_neuron_state_2);
-					if((pre_neuron_state_2 > 0.1)&&(pre_neuron_type!=5)){//if pre-neuron fired
+
+					if( ((pre_neuron_state_2 > 0.1)&&(pre_neuron_type!=5)) || ((pre_neuron_type!=4)&&(pre_neuron_state_3>0)) ){//if pre-neuron fired
 						//printf("-%d_%f-", connected_in, pre_neuron_state_2);
 						if(LOW_BIT_TRAINING){
 							if(LOW_BIT_NUM <= 8){
@@ -145,7 +224,7 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 									int32_t fixed = (int32_t)(delta_g * (two_power+0.0) / (LOW_BIT_NUM+0.0));
 									float delta_g_truncated = LOW_BIT_NUM*((fixed+0.0)/two_power);
 									float rounding_up_prob = (delta_g - delta_g_truncated)/(2*half_delta_g_step);
-									if(random_number_list_device[random_index]<rounding_up_prob) {
+									if(random_number_list_device[random_index_uniform]<rounding_up_prob) {
 										delta_g = delta_g_truncated+half_delta_g_step;
 									}else{
 										delta_g = delta_g_truncated;
@@ -158,7 +237,7 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 								}
 							}
 						}else{
-							delta_g = ALPHA_P_layer*__expf(-1*BETA_P*((NeuronList[index].connected_weight[connection_index]-G_MIN)/(G_MAX-G_MIN)));	//use hardware implemetation for exp
+							delta_g = ALPHA_P_layer*__expf(-1*BETA_P*((filter[current_layer-1][filter_index]-G_MIN)/(G_MAX-G_MIN)));	//use hardware implemetation for exp
 						}
 						if(DEVICE_VARIATION){
 							delta_g = (1+random_number_normal_device[random_index]) * delta_g;
@@ -175,7 +254,7 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 
 						if(STOCHASTIC_STDP){
 							float prob = StochSTDP_param_1*__expf(-1*pre_neuron_state_3/StochSTDP_tau);
-							if(random_number_list_device[random_index]>prob) {
+							if(random_number_list_device[random_index_uniform]>prob) {
 								delta_g = 0;
 							}
 						}
@@ -192,7 +271,7 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 									int32_t fixed = (int32_t)(delta_g * (two_power+0.0) / (LOW_BIT_NUM+0.0));
 									float delta_g_truncated = LOW_BIT_NUM*((fixed+0.0)/two_power);
 									float rounding_up_prob = (delta_g - delta_g_truncated)/(2*half_delta_g_step);
-									if(random_number_list_device[random_index]<rounding_up_prob) {
+									if(random_number_list_device[random_index_uniform]<rounding_up_prob) {
 										delta_g = delta_g_truncated+half_delta_g_step;
 									}else{
 										delta_g = delta_g_truncated;
@@ -205,7 +284,7 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 								}
 							}
 						}else{
-							delta_g = ALPHA_M_layer*__expf(-1*BETA_M*((G_MAX-NeuronList[index].connected_weight[connection_index])/(G_MAX-G_MIN)));
+							delta_g = ALPHA_M_layer*__expf(-1*BETA_M*((G_MAX-filter[current_layer-1][filter_index])/(G_MAX-G_MIN)));
 						}
 						if(DEVICE_VARIATION){
 							//printf("-%f", random_number_normal_device[random_index*MAX_CONNECTION+connection_index]);
@@ -226,29 +305,34 @@ __global__ void update_filter_v2(Neuron *NeuronList, Input_neuron *Input_neuronl
 
 						if(STOCHASTIC_STDP){
 							float prob = StochSTDP_param_2*__expf(pre_neuron_state_4/StochSTDP_tau);
-							if(random_number_list_device[random_index]>prob) {
+							if(random_number_list_device[random_index_uniform]>prob) {
 								//if(random_index>800&&random_index<900) printf("%f|", random_number_list_device[random_index*MAX_CONNECTION+connection_index]);
 								delta_g = 0;
 							}
 						}
 						delta_g = -1*delta_g;
 					}
-					int filter_index = current_depth*connection_size+connection_index;
+
 					//if(connection_index==1&&index<1001)printf("%d|",filter_index);
+
 					filter[current_layer-1][filter_index] += delta_g;
 					NeuronList[index].connected_weight[connection_index] = filter[current_layer-1][filter_index];
-		//			printf("%f-", filter[current_layer-1][filter_index]);
-
+					//printf("%f-", filter[current_layer-1][filter_index]);
+					//if(filter[current_layer-1][filter_index]>2) printf("$$ %d-%d is at %f", index, connection_index, filter[current_layer-1][filter_index]);
 				}
 			}
 
 
 }
 
-__global__ void log_all_fired(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *CNN_settings, float **filter, int current_layer, int start_index, int connection_size,float *random_number, float *random_number_normal_device, int network_size, int input_neuron_size, int filter_size, long two_power, float half_delta_g, int neuron_number_per_layer, float StochSTDP_param_1, float StochSTDP_param_2){
+__global__ void log_all_fired(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *CNN_settings, float **filter, int current_layer, int start_index, int connection_size,\
+		float *random_number, float *random_number_normal_device, int network_size, int input_neuron_size, int filter_size, long two_power, float half_delta_g, \
+		int neuron_number_per_layer, float StochSTDP_param_1, float StochSTDP_param_2, curandState *devStates){
+	//printf("#");
+
 	int blockId = blockIdx.x + blockIdx.y * gridDim.x;
 	int index = blockId * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
-	//printf("%d|", index);
+
 	if(index>=network_size){
 		return;
 	}
@@ -261,17 +345,34 @@ __global__ void log_all_fired(Neuron *NeuronList, Input_neuron *Input_neuronlist
 	if(NeuronList[index].param[7]<start_depth||NeuronList[index].param[7]>end_depth){
 		return;
 	}
+
+	//printf("%d|", index);
+	//return;
 	if(NeuronList[index].state[2]>0.1){
-		//printf("%d|", index);
+		//printf("id: %d in STDP: ", index);
     	int SIZE_PER_SIDE = sqrt((float)filter_size)+1;
 		dim3 dimBlock(4,4);
 		dim3 dimGrid( (SIZE_PER_SIDE/dimBlock.x+1), (SIZE_PER_SIDE/dimBlock.y+1) );
 
+		int total_neuron_size = network_size + input_neuron_size;
+		//printf("%d,", total_neuron_size);
 
-		update_filter_v2<<<dimGrid, dimBlock>>>(NeuronList, Input_neuronlist, index, CNN_settings, filter, current_layer, network_size, input_neuron_size, filter_size, two_power, half_delta_g, random_number, random_number_normal_device,  neuron_number_per_layer, start_index, StochSTDP_param_1, StochSTDP_param_2);
+	    if(STOCHASTIC_STDP || STOCHASTIC_ROUNDING){
+	    	int SIZE_PER_SIDE_curand = sqrt((float)filter_size)+1;
+	    	dim3 dimBlock_curand( 4, 4);
+	    	dim3 dimGrid_curand( (SIZE_PER_SIDE/dimBlock.x+1), (SIZE_PER_SIDE/dimBlock.y+1));
+	    	//setup_kernel<<<dimBlock_curand, dimGrid_curand>>>(devStates, filter_size);
+	    	//printf("\n\n");
+	    	generate_uniform_kernel<<<dimBlock_curand, dimGrid_curand>>>(devStates, random_number, filter_size);
+	    }
+
+
+		update_filter_v2<<<dimGrid, dimBlock>>>(NeuronList, Input_neuronlist, index, CNN_settings, filter, current_layer, network_size, input_neuron_size, total_neuron_size, filter_size, \
+				two_power, half_delta_g, random_number, random_number_normal_device,  neuron_number_per_layer, start_index, StochSTDP_param_1, StochSTDP_param_2);
 
 
 	}
+
 }
 
 __global__ void init_indicator(char *spike_indicator, int network_size){
@@ -301,7 +402,6 @@ __global__ void list_fired_index(int *fired_index, char *spike_indicator, int to
 	}
 }
 
-
 //__global__ int sum_spiked(int spike_counter, char *spike_indicator, int network_size){
 //	int blockId = blockIdx.x + blockIdx.y * gridDim.x;
 //	int index = blockId * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
@@ -313,13 +413,26 @@ __global__ void list_fired_index(int *fired_index, char *spike_indicator, int to
 //	}
 //}
 
-void synapse_drive_cnn_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *host_CNN_settings, CNN_struct *CNN_settings, float **filter, int current_layer, int network_size, int input_neuron_size, int syn_timer_max, int connection_size, float *random_number, float *random_number_normal_device, curandState_t *state, float StochSTDP_param_1, float StochSTDP_param_2){
+
+void copy_filter_to_cuDNN(Neuron *NeuronList, CNN_struct *CNN_settings, float **filter, int spiking_neuron_size){
+	cout<<"Copying current NeruonList weight to cuDNN filter. \n";
+	int SIZE_PER_SIDE = 2;
+	dim3 dimBlock(1, 1);
+	dim3 dimGrid( (SIZE_PER_SIDE/dimBlock.x+1), (SIZE_PER_SIDE/dimBlock.y+1));
+	copy_filter<<<dimGrid, dimBlock>>>(NeuronList, CNN_settings, filter, spiking_neuron_size);
+}
+
+void synapse_drive_cnn_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *host_CNN_settings, CNN_struct *CNN_settings, float **filter, \
+		int current_layer, int network_size, int input_neuron_size, int syn_timer_max, int connection_size, float *random_number, \
+		float *random_number_normal_device, curandState_t *state, float StochSTDP_param_1, float StochSTDP_param_2){
 
 	//first make an array of fired neuron index, and sum up the total number of fired neuron
 	int SIZE_PER_SIDE = sqrt(network_size)+1;
-	dim3 dimBlock( ThreadsPerBlock, ThreadsPerBlock );
-	dim3 dimGrid( (SIZE_PER_SIDE/dimBlock.x+1), (SIZE_PER_SIDE/dimBlock.y+1));
 
+	dim3 dimBlock( ThreadsPerBlock*2, ThreadsPerBlock*2);
+	if(SIZE_PER_SIDE<=ThreadsPerBlock*2) 	dim3 dimBlock(1, 1);
+	dim3 dimGrid( (SIZE_PER_SIDE/dimBlock.x+1), (SIZE_PER_SIDE/dimBlock.y+1));
+//	std::cout<<SIZE_PER_SIDE<<" "<<endl;
 
 //	dim3 sum_block(1,1);
 //	dim3 pre_process_grid(1, 1);
@@ -331,9 +444,11 @@ void synapse_drive_cnn_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, CN
 
 	//int SIZE_PER_SIDE = sqrt(network_size*MAX_CONNECTION)+1;
 	int neuron_number_per_layer = host_CNN_settings->layer[current_layer].depth * host_CNN_settings->layer[current_layer].width * host_CNN_settings->layer[current_layer].length;
-	int filter_size_per_depth = host_CNN_settings->layer[current_layer].conv_setting.filter_length * host_CNN_settings->layer[current_layer].conv_setting.filter_width* host_CNN_settings->layer[current_layer].conv_setting.filter_depth;
+	int filter_size_per_depth = host_CNN_settings->layer[current_layer].conv_setting.filter_length * host_CNN_settings->layer[current_layer].conv_setting.filter_width* host_CNN_settings->layer[current_layer-1].depth;
 	int start_index = host_CNN_settings->layer[current_layer].depth_list[0].first_neuron;
+	//printf("Start index is %d\n", start_index);
 	//printf("Neuron#is:%d, filterSizeIs:%d", neuron_number_per_layer, filter_size_per_depth);
+
 	//int SIZE_ALONG_Z = 784;
 	//int SIZE_PER_SIDE = std::pow(neuron_number_per_layer*filter_size_per_depth, 1.0/3) + 1;
 
@@ -377,11 +492,14 @@ void synapse_drive_cnn_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, CN
 
 	}
 	half_delta_g = 0.5/two_power;
-
-	//printf("\n \n Updating filter\n");
+//	cout<<"Filter size: "<<filter_size_per_depth<<endl;
+//	printf("\n \n Updating filter\n");
 	//update_synapse_counter<<<dimGrid, dimBlock>>>(NeuronList, network_size, syn_timer_max, connection_size);
 
 	//update_filter_NOSTOCH_NOLOWBIT<<<dimGrid, dimBlock>>>(NeuronList, CNN_settings, filter, current_layer, network_size, connection_size, two_power, half_delta_g, random_number, neuron_number_per_layer, StochSTDP_param_1, StochSTDP_param_2);
 
-	log_all_fired<<<dimBlock, dimGrid>>>(NeuronList, Input_neuronlist, CNN_settings, filter, current_layer, start_index, connection_size, random_number, random_number_normal_device, network_size, input_neuron_size, filter_size_per_depth, two_power, half_delta_g, neuron_number_per_layer, StochSTDP_param_1, StochSTDP_param_2);
+
+	log_all_fired<<<dimBlock, dimGrid>>>(NeuronList, Input_neuronlist, CNN_settings, filter, current_layer, start_index, connection_size, random_number, random_number_normal_device, \
+			network_size, input_neuron_size, filter_size_per_depth, two_power, half_delta_g, neuron_number_per_layer, StochSTDP_param_1, StochSTDP_param_2, state);
+
 }

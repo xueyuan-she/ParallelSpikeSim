@@ -11,7 +11,8 @@
 #include "header.h"
 #include <cudnn.h>
 using namespace std;
-
+#define process_variation 1
+#define process_std 0.02
 /*
 test IZH: 1 0 0.15 0.3 -72.14 2.44 30 -60 -14 0 ; 1 0 .
 test LIF: 1 2 -70 -55 -75 20 10 10 -70 0 0 ; 1 0 .
@@ -274,6 +275,7 @@ void spike_learning_gen(int neuron_type, int network_size, int* mid_layer, int m
 
 void spike_cnn_gen(CNN_struct *network_config){
 
+	srand(1);
 	printf("Writing CNN to config file\n");
 	int neuron_type = 2;
 
@@ -284,15 +286,21 @@ void spike_cnn_gen(CNN_struct *network_config){
 
 	int param_num = 8;
 	int state_num = 8;
-	int mid_conductance = 200;
+	int mid_conductance = 150;
 
 	int different_parameter = 0;
 
-	float param_temp[8] = {-0.1089, -60.2, -74.7, 20, 0.314, -6.07, 0, 0};
+	float param_temp[8] = {0.01, -60.2, -74.7, 20, 0.314, -2.07, 0, 0};
 	float state_temp[8] = {-70, 0, 0, 0, 0, 0, 0, 0};
 	float input_param_temp[8] = {1, 0, 0, 0, 0, 0, 0, 0};
 	float input_state_temp[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+	//float param_temp_layer3[8] = {0.01, -60.2, -74.7, 20, 0.314, -1.07, 0, 0};
+
 	ofstream myfile_2 ("spike_cnn.txt");
+
+	std::default_random_engine generator;
+	std::normal_distribution<float> distribution(0.0,process_std);
 
 	int neuron_count = 1;
 	int total_neuron = 0;
@@ -329,7 +337,12 @@ void spike_cnn_gen(CNN_struct *network_config){
 			depth_struct current_depth = current_layer.depth_list[first_j];
 
 			param_temp[7] = current_depth.id;
-//			printf("#%d", current_depth.id);
+			//printf("#%d", current_depth.id);
+			if(first_i==2){
+				param_temp[0] = 0.005;
+				param_temp[5] = -0.5;
+				param_temp[4] = 1;
+			}
 			std::copy(param_temp, param_temp + 8, param);
 			std::copy(state_temp, state_temp + 8, state);
 
@@ -341,7 +354,14 @@ void spike_cnn_gen(CNN_struct *network_config){
 //			cout<<"output_size_x: "<<output_size_x<<"output_size_y: "<<output_size_y<<endl;
 //			cout<<"current_depth.width: "<<current_depth.width<<"current_depth.length: "<<current_depth.length<<endl;
 			if((output_size_x!=current_depth.width)||(output_size_y!=current_depth.length)){
-				cout<<"WARNING: Layer Sizing Problem"<<endl;
+				cout<<"============================================"<<endl;
+				cout<<"WARNING: Layer "<<first_i<<" Sizing Problem"<<endl;
+				cout<<"output_size_x: "<<output_size_x<<"output_size_y: "<<output_size_y<<endl;
+				cout<<"current_depth.width: "<<current_depth.width<<"current_depth.length: "<<current_depth.length<<endl;
+				cout<<"============================================"<<endl;
+			}
+			if(current_layer.conv_setting.filter_depth*current_layer.conv_setting.filter_length*current_layer.conv_setting.filter_width>=MAX_CONNECTION){
+				cout<<"++++++++++ Warning: layer "<<first_i<<" has more parameters than max connection +++++++++"<<endl;
 			}
 
 			int reverse_mapped_start_x = 0 - conv_setting.pad_width;
@@ -361,7 +381,20 @@ void spike_cnn_gen(CNN_struct *network_config){
 										}
 									}else{
 										for(int j=0; j<param_num;j++){
-											myfile_2 << param[j] << " ";
+											if(process_variation){
+
+												if(j==1){
+													float random_temp = distribution(generator);
+
+													if (random_temp > 0.1) random_temp = 0.1;
+													else if (random_temp < -0.1) random_temp = -0.1;
+													myfile_2 << param[j]+(14.5*random_temp) << " ";
+												}
+												else if(j==4) myfile_2 << param[j]*(1+distribution(generator)) << " ";
+												else myfile_2 << param[j] << " ";
+											}else{
+												myfile_2 << param[j] << " ";
+											}
 										}
 										for(int j=0; j<state_num;j++){
 											myfile_2 << state[j] << " ";
@@ -390,15 +423,17 @@ void spike_cnn_gen(CNN_struct *network_config){
 														//if(neuron_count==7501)cout<<start_neuron_id<<" "<<mapped_y<<" "<<mapped_x<<endl;
 														if(mapped_index<=input_depth.last_neuron){
 															float cdt = 0;
-															int fluct = 100 - (rand() % 200);
+															int fluct = 150 - (rand() % 300);
+															//if(second_i==1)cout<<fluct<<", ";
 															//fluct = 0;
 															cdt = (mid_conductance+fluct)/1000.0;
+															if(non_random_weight_init) cdt=0.1;
 															myfile_2 << mapped_index + 1 << ' ' << to_string(cdt) << ' ';
 															connected_in_count ++;
 														}
 													}else{
 //														myfile_2 << (total_neuron+1) << ' ' << mapped_x << "|" << mapped_y << ' ';
-														myfile_2 << (total_neuron+1) << ' ' << 0 << ' ';
+														myfile_2 << (total_neuron+100000) << ' ' << 0 << ' ';
 													}
 												}
 											}else{
@@ -406,11 +441,25 @@ void spike_cnn_gen(CNN_struct *network_config){
 													int delta_x = second_j;
 													int mapped_x = reverse_mapped_left_x + delta_x;
 //													myfile_2 << (total_neuron+1) << ' ' << mapped_x << "|" << mapped_y  << ' ';
-													myfile_2 << (total_neuron+1) << ' ' << 0 << ' ';
+													myfile_2 << (total_neuron+100000) << ' ' << 0 << ' ';
 												}
 											}
 										}
 										//if(connected_in_count%2!=0&&connected_in_count!=9) cout<<"Wrong connected in number at depth: "<<current_depth.id<<endl;
+									}
+
+									myfile_2 << "| ";
+									int local_inhibition_size = 1;
+									//cout<<layer_y<<' '<<output_size_y<<endl;
+									for(int LI_x=-1*local_inhibition_size; LI_x<=local_inhibition_size; LI_x++){
+										for(int LI_y=-1*local_inhibition_size; LI_y<=local_inhibition_size; LI_y++){
+											if (((layer_y+LI_y)>=output_size_y)||((layer_y+LI_y)<0)||((layer_x+LI_x)<0)||((layer_x+LI_x)>=output_size_x)) continue;
+											if (LI_y==0 && LI_x==0) continue;
+											int LI_mapped_index = neuron_count + LI_x + output_size_x*LI_y;
+											myfile_2<<LI_mapped_index<<' ';
+
+										}
+
 									}
 
 									myfile_2 << ".\n";
@@ -707,14 +756,14 @@ void CNN_sturct_build(CNN_struct *network_config){
 				conv_build.dilation_height = 1;
 				conv_build.dilation_width = 1;											//If all connect, use:
 				conv_build.filter_depth = network_config->layer[layer_index-1].depth;	//network_config->layer[layer_index-1].depth;
-				conv_build.filter_length = 	network_config->layer[layer_index-1].length;	//network_config->layer[layer_index-1].length;
-				conv_build.filter_width = network_config->layer[layer_index-1].width;		//network_config->layer[layer_index-1].width;
+				conv_build.filter_length = 	3;//network_config->layer[layer_index-1].length; //3;
+				conv_build.filter_width = 3;//network_config->layer[layer_index-1].width;		//3;
 				conv_build.horizontal_stride = 1;
 				conv_build.vertical_stride = 1;
-				conv_build.pad_height = 0;
-				conv_build.pad_width = 0;
+				conv_build.pad_height = 1;
+				conv_build.pad_width = 1;
 
-				network_config->layer[layer_index].depth = 100;
+				network_config->layer[layer_index].depth = 32;
 				network_config->layer[layer_index].conv_setting = conv_build;
 				network_config->layer[layer_index].layer_id = layer_index;
 				network_config->layer[layer_index].input_layer = layer_index - 1;
@@ -723,13 +772,13 @@ void CNN_sturct_build(CNN_struct *network_config){
 				conv_build.dilation_height = 1;
 				conv_build.dilation_width = 1;
 				conv_build.filter_depth = network_config->layer[layer_index-1].depth;
-				conv_build.filter_length = 3;
-				conv_build.filter_width = 3;
-				conv_build.horizontal_stride = 3;
-				conv_build.vertical_stride = 3;
+				conv_build.filter_length = 3;//network_config->layer[0].length;;
+				conv_build.filter_width = 3;//network_config->layer[0].width;;
+				conv_build.horizontal_stride = 1;
+				conv_build.vertical_stride = 1;
 				conv_build.pad_height = 1;
 				conv_build.pad_width = 1;
-				network_config->layer[layer_index].depth = 16;
+				network_config->layer[layer_index].depth = 40;
 				network_config->layer[layer_index].conv_setting = conv_build;
 
 				network_config->layer[layer_index].layer_id = layer_index;
@@ -746,7 +795,7 @@ void CNN_sturct_build(CNN_struct *network_config){
 				conv_build.pad_height = 1;
 				conv_build.pad_width = 1;
 
-				network_config->layer[layer_index].depth = 1;
+				network_config->layer[layer_index].depth = 56;
 				network_config->layer[layer_index].conv_setting = conv_build;
 				network_config->layer[layer_index].layer_id = layer_index;
 				network_config->layer[layer_index].input_layer = layer_index - 1;
@@ -777,7 +826,7 @@ void CNN_sturct_build(CNN_struct *network_config){
 			network_config->layer[layer_index].first_depth_id = network_config->layer[layer_index-1].last_depth_id + 1;
 			network_config->layer[layer_index].last_depth_id = network_config->layer[layer_index-1].last_depth_id + network_config->layer[layer_index].depth;
 		}
-
+		cout<<"first depth: "<<network_config->layer[layer_index].first_depth_id<<" last depth: "<<network_config->layer[layer_index].last_depth_id<<endl;
 		for(int i=0; i<network_config->layer[layer_index].depth; i++){
 			depth_struct current_depth;
 			current_depth.id = depth_id_count;

@@ -14,6 +14,9 @@ using namespace std;
 
 //currently using LIF for spike learning
 
+
+
+
 __global__ void update_threshold (Neuron *NeuronList, int network_size, float *log_total_spike, float target_frequency, int time){
 	int blockId = blockIdx.x + blockIdx.y * gridDim.x;
 	int index = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;

@@ -7,6 +7,7 @@
 int read_neuron_list(Neuron *NeuronList, int neuron_type, string file_name){
 	int i = 0;//number of neurons
 	int j = 0;//number of connected_in neurons
+	int k = 0;
 	std::string item;
 	ifstream file_read;
 	file_read.open(file_name.c_str());
@@ -28,6 +29,11 @@ int read_neuron_list(Neuron *NeuronList, int neuron_type, string file_name){
 			flag_1 = 1;
 			flag_0 = 0;
 			j = 0;
+		}
+		else if(strcmp(item.c_str(), "|") == 0){
+			flag_1 = 2;
+			flag_0 = 0;
+			k = 0;
 		}
 		else if(strcmp(item.c_str(), ".") == 0){
 			flag_1 = 0;
@@ -70,7 +76,8 @@ int read_neuron_list(Neuron *NeuronList, int neuron_type, string file_name){
 				//cout<<"= "<<stream<<" =";
 				flag_2 = 1;
 			}else{
-				NeuronList[i].connected_weight[j] = strtof(item.c_str(), NULL);
+				NeuronList[i].connected_weight[j] = strtof(item.c_str(), NULL) + 0.25;
+//				printf("-%f",NeuronList[i].connected_weight[j]);
 				flag_2 = 0;
 				j++;
 			}
@@ -82,6 +89,10 @@ int read_neuron_list(Neuron *NeuronList, int neuron_type, string file_name){
 			cout<<"connected:"<<item.c_str()<<endl;
 			*/
 
+		}
+		else if (flag_1 == 2){
+			NeuronList[i].local_inhibition[k] = atoi(item.c_str());
+			k++;
 		}
 
 

@@ -23,18 +23,24 @@
 #include "CImg.h"
 #include <cudnn.h>
 
-#define MAX_CONNECTION 8000
+
 #define img_width 64	//for ROI
 #define img_len 64
-#define input_image_w 50	//for learning
-#define input_image_l 50
-#define input_image_channel 3
-
+#define input_image_w 32	//for learning           for sc2 learning make 4x4
+#define input_image_l 32
+#define input_image_channel 3  //for learning           for sc2 learning make 13
+#define non_random_weight_init 0
 #define shuffle_image 1
-
-#define CNN_total_layer_num 2 //this includes input layer
+#define MAX_CONNECTION 1000
+#define MAX_LOCAL_INHIBITION 100
+#define CNN_total_layer_num 3 //this includes input layer
 #define MAX_depth_in_one_layer 1100  //this includes input layer
 //MODE Select
+#define depth_wise_inhibition 0
+#define through_depth_inhibition false
+#define apply_local_inhibition true
+#define forced_lateral_inhibition_at_last_layer false
+
 #define LOW_BIT_TRAINING 0
 #define STOCHASTIC_STDP 1
 #define STOCHASTIC_ROUNDING 0
@@ -62,14 +68,17 @@ typedef struct {
 	signed int index;	//start with 1
 	signed int type;	//0: IZH, 1: Stochastic, 2: LIF, 3: HH
 
-	float param[8]; //Izh has 5 parameters, a b c d threshold; LIF has
+	float param[8]; //Izh has 5 parameters, a b c d threshold; LIF has, 1 is threshold, 2 is reset
 
-	float state[8]; //Izh has 3 states, U V Flag
+	float state[8]; //Izh has 3 states, 0 is membrane potential, 1 is V Flag
 
 	//change connection size, remember to change MACRO in main.cu
 	unsigned int connected_in[MAX_CONNECTION];	//ROI: 3
 	float connected_weight[MAX_CONNECTION];
 	signed char synapse_timer[MAX_CONNECTION];	//used in STPD learning
+
+
+	unsigned int local_inhibition[MAX_LOCAL_INHIBITION];
 } Neuron;
 
 typedef struct {
@@ -150,6 +159,7 @@ void spiking_learning_drive(Neuron *NeuronList, int network_size, int inhibit_ti
 void spiking_learning_drive(Neuron *NeuronList, int network_size, int inhibit_time, float *log_total_spike, float target_frequency, int time, float *log_spike, int current_layer, int function_select);
 //void synapse_drive_v1(Neuron *NeuronList, int network_size, int syn_timer_max, int connection_size, float *random_number, float StochSTDP_param_1, float StochSTDP_param_2);
 void MNIST_drive(Neuron *NeuronList, Input_neuron *Input_neuronlist, float *image, int network_size, int training_set_number, int start, int end, float max_frequency, float min_frequency, int function_select);
+void MNIST_drive(Neuron *NeuronList, Input_neuron *Input_neuronlist, float *MNIST_stimulus_freq, int network_size, int training_set_number, int start, int end, float max_frequency, float min_frequency, int function_select, int target);
 void spiking_learning_main(Neuron *NeuronList, Neuron *old_device_neurons, float *random_number, int network_size, float *log_v, float *log_spike, float *log_total_spike, int *spike_flag, int signal_width, int time_stamp);
 int write_neuron_list(Neuron *NeuronList, string file_name, int network_size);
 void data_check(Neuron *NeuronList, float *log_total_spike, int network_size, int mnist_start_index, int mnist_end_index, int function_select, string plot_prefix);
@@ -160,11 +170,11 @@ void img_util(float *img_data, string file_name, int function_select);
 int network_config_generator(int function_select, CNN_struct *settings);
 //void synapse_drive_cnn(Neuron *NeuronList, CNN_struct *host_CNN_settings, CNN_struct *CNN_settings, float **filter, int current_layer, int network_size, int syn_timer_max, int connection_size, float *random_number, float StochSTDP_param_1, float StochSTDP_param_2);
 void synapse_drive_cnn_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *host_CNN_settings, CNN_struct *CNN_settings, float **filter, int current_layer, int network_size, int input_neuron_size, int syn_timer_max, int connection_size, float *random_number, float *random_number_normal_device, curandState_t *state, float StochSTDP_param_1, float StochSTDP_param_2);
-int filter_util(CNN_struct *settings, Neuron *NeuronList, int network_size, int input_neuron_size, float **host_filter_array, float **device_filter_array, int function_select);
+int filter_util(CNN_struct *settings, Neuron *NeuronList, int network_size, int input_neuron_size, float **host_filter_array, float **device_filter_array, string plot_prefix, int function_select);
 int CNN_util(CNN_struct *settings, float **d_instance_matrix_array, float **d_convolution_result_array, float **h_instance_matrix_array, float **h_convolution_result_array, int function_select);
-void spiking_cnn_main(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *CNN_setttings, float *random_number, float **input, float **instance_matrix, int current_layer, int network_size, int input_size, float *log_v, float *log_spike, float *log_total_spike, int *spike_flag, int signal_width, float input_float, int time_stamp);
+void spiking_cnn_main(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *CNN_setttings, float *random_number, float **input, float **instance_matrix, int current_layer, int network_size, int input_size, float *log_v, float *log_spike, float *log_total_spike, int *spike_flag, int signal_width, float input_float, int time_stamp, bool enable_inhibition);
 int convolution_kernel_setup(Convolution_setting_struct *convolution_settings, CNN_struct *settings, int layer_index);
-
+void spiking_cnn_main(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *CNN_setttings, float *random_number, float **input, float **instance_matrix, int current_layer, int network_size, int input_size, float *log_v, float *log_spike, float *log_total_spike, int *spike_flag, int signal_width, float input_float, int time_stamp, int optional_inp, bool teaching_mode);
 /*
 void test_function(int a);
 //vector<Neuron> read_script(string file_path);
@@ -175,17 +185,44 @@ void GPU_kernel_Stochastic(Neuron *NeuronList, float *random_number, int number_
 //void read_neuron_list(Neuron *NeuronList, int neuron_model, string file_name);
 int read_neuron_list(Neuron *NeuronList, int neuron_model, string file_name);
 */
+//==========initialization functions==============
+void neuron_list_init(Neuron *NeuronList, int network_size);
+void neuron_list_init(Neuron *NeuronList);
+void input_neuron_list_init(Input_neuron *NeuronList, int network_size);
+void init_log_v (float *log_v);
+void init_data_log (float *log_v_host, float *log_spike_host, float *log_total_spike_host, int inter);
+void izh_parameter_init(float *izh_parameters);
+//==========GPU utility functions==============
+__global__ void change_threshold (Neuron *NeuronList, int network_size, float start_depth, float end_depth, float target_threshold);
+__global__ void lateral_inhibition_depth_wise_mother_thread (Neuron *NeuronList, int network_size, int depth_ind_to_learn, int inhibit_time, CNN_struct *CNN_setttings, float *spike_flag, int total_depth_number);
+__global__ void lateral_inhibition_mother_thread (Neuron *NeuronList, int network_size, int layer_ind_to_learn, int inhibit_time, CNN_struct *CNN_setttings, int *spike_flag);
+__global__ void lateral_inhibition_child (Neuron *NeuronList, int network_size, int inhibit_time, float start_depth, float end_depth, int depth_iter);
+
+void copy_filter_to_cuDNN(Neuron *NeuronList, CNN_struct *CNN_settings, float **filter, int spiking_neuron_size);
 //==========learning options==============
 void run_cnn(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
+float spiking_learning_label(string network_data, string flag_file, int input_index, int num_test, int function_select, int data_set_select);
+void run_cnn_multilayer(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
+
+void run_time_sequence(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
+void run_sc2(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
+//==========inference options==============
+void run_cnn_multilayer_inference(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
 
 //==========data reader===================
 void read_filter_data(string image_file, float *image, int num, int pixel_num);
 void CIFAR_read_image_one_channel(float *image, int image_size, int channel, int data_set_choise);
-void CIFAR_read_image(float *image, int image_size, int data_set_choise, bool if_gray_scale);
+void CIFAR_read_image(float *image, int image_size, int total_img_num, int data_set_choise, bool if_gray_scale);
 void GTVIR_read_image(float *image, int image_size, int total_img_num);
 void CIFAR_read_label(int *label, int data_set_choise);
 void MNIST_read_image(string image_file, float *image , int num);
 void MNIST_read_label(string label_file, int *label, int num);
 void KAIST_PED_read_image(string image_path, float *image , int num);
-
+void read_sine_seq(string image_file, float *image, int num);
+void imageNET_read_image(string folder_to_read, float *image , int num);
+void read_sc2(string image_file, float *image, int num);
+void read_sc2_2(string image_file, float *image, int num);
+void read_sc2_3(string image_file, float *image, int num);
+void read_polygon(string folder_to_read, float *image, int num);
+void read_one_image(string dir_to_read, float *image, int num);
 #endif /* HEADER_H_ */

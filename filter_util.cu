@@ -40,21 +40,24 @@ __global__ void read_filter_one_layer (CNN_struct *settings, float *device_filte
 __global__ void weight_cpy_filter_to_neuronlist (CNN_struct *CNN_setttings, Neuron *NeuronList, int network_size, int input_neuron_size, float **filter, int current_layer){
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
     int index = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
-
+	if(index<input_neuron_size) return;
     if(index>=network_size) return;
-	if(NeuronList[index].type==4||NeuronList[index].type==5){//if the post-synapse neuron is input-signal-neuron, jump over
-		return;
-	}
+//    printf(" %d", index);
+//	printf("relative %d, ", CNN_setttings->layer[current_layer].depth_list[0].first_neuron);
+
 
 //	if((NeuronList[index].param[7]-current_layer)>0.01||(NeuronList[index].param[7]-current_layer)<-0.01){
 //		printf("param_7 is: %f", NeuronList[index].param[7]);
 //		return;
 //	}
-	if(index<input_neuron_size) return;
+
 
 	int neuron_relative_index = index - CNN_setttings->layer[current_layer].depth_list[0].first_neuron;
-	index = index - input_neuron_size;
 
+	index = index - input_neuron_size;
+	if(NeuronList[index].type==4||NeuronList[index].type==5){//if the post-synapse neuron is input-signal-neuron, jump over
+		return;
+	}
 	float start_depth = CNN_setttings->layer[current_layer].first_depth_id - 0.1;
 	float end_depth = CNN_setttings->layer[current_layer].last_depth_id + 0.1;
 	if(NeuronList[index].param[7]<start_depth||NeuronList[index].param[7]>end_depth){
@@ -69,44 +72,53 @@ __global__ void weight_cpy_filter_to_neuronlist (CNN_struct *CNN_setttings, Neur
 	//int current_depth = neuron_relative_index/number_of_neurons_per_depth + CNN_setttings->layer[current_layer].first_depth_id - 1;
 	int current_depth = NeuronList[index].param[7] - CNN_setttings->layer[current_layer].first_depth_id;
 
-	if(NeuronList[index].state[2]>0.1){//if post-synapse neuron fired
+	//if(NeuronList[index].state[2]>0.1){//if post-synapse neuron fired
 		while(NeuronList[index].connected_in[i] > 0.1){
 			int connected_in = NeuronList[index].connected_in[i] - 1;
 			int filter_index = current_depth*filter_size_per_depth+i;
 			NeuronList[index].connected_weight[i] = filter[current_layer-1][filter_index];
 			i++;
+			//printf("%d: %f, ",index, filter[current_layer-1][filter_index]);
 		}
-	}
+	//}
 }
 
 
-void write_weight_to_file(CNN_struct *network_config, float **filter_array){
-	ofstream myfile_2 ("CNN_WEIGHT_OUT.csv");
+
+
+void write_weight_to_file(CNN_struct *network_config, float **filter_array, string plot_prefix){
+
+	//for(int i=0; i<15; i++) cout<<i<<": "<<filter_array[0][i]<<", ";
+
+	ofstream myfile_2 (plot_prefix+"CNN_WEIGHT_OUT.csv");
 	if (myfile_2.is_open()){
 		for (int layer_index=1; layer_index<CNN_total_layer_num; layer_index++){
 			convolution_param current_conv = network_config->layer[layer_index].conv_setting;
 			//cout<<endl<<"check this: "<<current_conv.filter_depth<<" "<<network_config->layer[layer_index].depth<<endl;
 			//float filter_mat[current_conv.filter_depth][network_config->layer[layer_index].depth][current_conv.filter_length][current_conv.filter_width];
 			int filter_size=current_conv.filter_depth*network_config->layer[layer_index].depth*current_conv.filter_length*current_conv.filter_width;
-			float *filter_mat = new float[filter_size];
-			for(int i=0;i<filter_size;i++) filter_mat[i]=0;
-			memcpy(filter_mat, filter_array[layer_index-1], sizeof(filter_mat));
-			myfile_2 << "New_Layer" << endl;
+			printf("filer size: %d\n", filter_size);
+			//float *filter_mat = new float[filter_size];
+			//for(int i=0;i<filter_size;i++) filter_mat[i]=0;
+			//memcpy(filter_mat, filter_array[layer_index-1], sizeof(filter_mat));
+			myfile_2 << endl << endl;
 			int index_count = 0;
 				for (int kernel = 0; kernel < current_conv.filter_depth; ++kernel) {
 					for (int channel = 0; channel < network_config->layer[layer_index].depth; ++channel) {
 					  for (int row = 0; row < current_conv.filter_length; ++row) {
 						for (int column = 0; column < current_conv.filter_width; ++column) {
 						  //myfile_2 << filter_mat[kernel][channel][row][column] << ", ";
-						  myfile_2 << filter_mat[index_count] << ", ";
+						  //cout<<index_count<<": "<<filter_mat[index_count]<<" ,";
+						  myfile_2 << filter_array[layer_index-1][index_count] << ", ";
 						  index_count ++;
 						}
 					  }
+					  //cout<<"Kernel: "<<kernel<<" has depth: "<<network_config->layer[layer_index].depth<<endl;
 					  myfile_2 << endl;
 					}
-					myfile_2 << endl << endl << endl;
+					myfile_2 << endl;
 				}
-			delete[] filter_mat;
+			//delete[] filter_mat;
 		}
 
 		myfile_2.close();
@@ -117,8 +129,8 @@ void shared_weight_gen(CNN_struct *network_config, float *filter_array[CNN_total
 	for (int layer_index=1; layer_index<CNN_total_layer_num; layer_index++){
 		convolution_param current_conv = network_config->layer[layer_index].conv_setting;
 		//float *weight = new float[current_conv.filter_depth][network_config->layer[layer_index].depth][current_conv.filter_length][current_conv.filter_width];
-		srand (time(NULL));
-		int mid_conductance = 500;
+		srand (1);
+		int mid_conductance = 200;
 		const float kernel_template[3][3] = {
 		{1, 1, 1},
 		{1, 0, 1},
@@ -140,7 +152,7 @@ void shared_weight_gen(CNN_struct *network_config, float *filter_array[CNN_total
 			  for (int row = 0; row < current_conv.filter_length; ++row) {
 				for (int column = 0; column < current_conv.filter_width; ++column) {
 
-				  int fluct = 500 - (rand() % 1000);
+				  int fluct = 200 - (rand() % 400);
 				  //filter_mat[kernel][channel][row][column] = (mid_conductance+fluct)/1000.0;
 				  filter_mat[index_count] = (mid_conductance+fluct)/1000.0;
 				  index_count++;
@@ -158,7 +170,7 @@ void shared_weight_gen(CNN_struct *network_config, float *filter_array[CNN_total
 	}
 }
 
-int filter_util(CNN_struct *settings, Neuron *NeuronList, int network_size, int input_neuron_size, float **host_filter_array, float **device_filter_array, int function_select){
+int filter_util(CNN_struct *settings, Neuron *NeuronList, int network_size, int input_neuron_size, float **host_filter_array, float **device_filter_array, string plot_prefix, int function_select){
 
 	if(function_select==0){//whole function, initialize host array and copy to device
 		int filter_array_size = CNN_total_layer_num-1;
@@ -220,11 +232,12 @@ int filter_util(CNN_struct *settings, Neuron *NeuronList, int network_size, int 
 		h_filter_array_temp = (float**)malloc(filter_array_size * sizeof(float*));
 		for (int i=0;i<CNN_total_layer_num-1;i++){
 			int filter_size = settings->layer[i+1].conv_setting.filter_depth * settings->layer[i+1].conv_setting.filter_width * settings->layer[i+1].conv_setting.filter_length * settings->layer[i+1].depth;
+			cout<<filter_size<<" sized filter copied"<<endl;
 			h_filter_array_temp[i] = (float*)malloc(filter_size * sizeof(float));
 			cudaMemcpy(h_filter_array_temp[i], host_filter_array[i], filter_size * sizeof(float), cudaMemcpyDeviceToHost);
 			//cudaerr = cudaMemcpy(device_filter_array[i], weight_array[i], filter_size*sizeof(float), cudaMemcpyHostToDevice);
 		}
-		write_weight_to_file(settings, h_filter_array_temp);
+		write_weight_to_file(settings, h_filter_array_temp, plot_prefix);
 	}
 	else if(function_select==2){//copy filter to NeuronList
 		CNN_struct *CNN_settings_device;

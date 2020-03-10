@@ -44,7 +44,13 @@ int main()
 	int input_index = 0;
 	switch (mode_select){
 
-					//case 0: spiking_learning_label(); break;
+					case 0:
+					{
+						cudaSetDevice(0);
+						run_cnn_multilayer_inference("", 0.8, -1.0, 10000, 5, "spike_cnn.txt");
+					}
+					break;
+
 					case 1:
 					{
 						printf("Case 1 selected/n");
@@ -52,20 +58,37 @@ int main()
 					}
 					break;
 					//case 2: run_test(); break;
-					//case 3: run_ROI(); break;
+					case 3: {
+						cudaSetDevice(1);
+						int total_folder_num = 30;
+						//string path_prefix[total_folder_num] = {"1_1","1_2","1_3","1_4","1_5","1_6","1_7","1_8","2_0","2_1","3_0","4_0","4_1","4_2","4_3","5_0", "5_1","6_0","6_1"};
+						//string path_prefix[total_folder_num] = {"4_0","4_1","4_2","4_3"};"3_0","3_1","3_2","4_0","4_1","4_2",
+						string path_prefix[total_folder_num] = {"2_0","2_1","2_2","3_0","3_1","3_2","4_0","4_1","4_2","5_0","5_1","5_2","5_3","6_0","6_1","6_2","6_3","6_4","6_5","6_6"};
+						//string path_prefix[total_folder_num] = {"1_0","2_0","3_0","4_0","5_0","6_0","7_1","7_2","7_3"};//for 20 steps
+						for (int i=0; i<total_folder_num; i++) {
+							for (int j=0; j<1; j++) {
+								string prefix = (path_prefix[i]+"-"+to_string(j));
+								cout<<prefix<<endl;
+								run_sc2(prefix, 1, -1.0, 300, 5, "spike_cnn.txt");
+								//run_time_sequence(prefix, 1, -1.0, 100, 5, "spike_cnn.txt");
+							}
+						}
+					}
+					break;
 					case 4:
 					{
-						float *mnist_img = new float[1];
-						KAIST_PED_read_image("", mnist_img, 4000);
+						cudaSetDevice(1);
+						run_time_sequence("", 1, -1.0, 10, 5, "spike_cnn.txt");
 					}
 					break;
 					case 5:
-						run_cnn("", 400, -1.0, 300, 10, "spike_cnn.txt");
+						cudaSetDevice(1);
+						run_cnn_multilayer("", 0.8, -1.0, 300, 5, "spike_cnn.txt");
 					break;
 					case 6:
 					{
 						cudaSetDevice(0);
-						run_cnn("", 1, -1.0, 400, 5, "spike_cnn.txt");
+						run_cnn("", 0.8, -1.0, 500, 5, "spike_cnn.txt");
 					}
 					break;
 					case 7:

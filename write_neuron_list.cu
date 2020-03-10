@@ -14,6 +14,7 @@ int write_neuron_list(Neuron *NeuronList, string file_name, int network_size){
 
 
 	for(int i=0;i<network_size;i++){
+		//cout<<i<<" ";
 		int para_num = 8;
 		int state_num = 8;
 		string each_neuron;
@@ -60,13 +61,21 @@ int write_neuron_list(Neuron *NeuronList, string file_name, int network_size){
 			connected_in_i ++;
 		}
 		//cout<<each_neuron;
+		each_neuron = each_neuron + '|' + ' ';
+		connected_in_i = 0;
+		while(NeuronList[i].local_inhibition[connected_in_i] > 1){
+			//cout << to_string(NeuronList[i].connected_in[connected_in_i]);
+			each_neuron = each_neuron + to_string(NeuronList[i].local_inhibition[connected_in_i]) + ' ';
+			connected_in_i ++;
+		}
+		//cout<<each_neuron;
 		each_neuron = each_neuron + '.' + ' ';
 		file_write << each_neuron << '\n';
 
 	}
 
 	file_write.close();
-
+	cout<<"File write complete\n";
 	return 0;
 
 }
