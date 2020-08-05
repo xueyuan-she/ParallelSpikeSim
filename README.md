@@ -22,4 +22,3 @@ The latest release was tested on Ubuntu 16.04
 - CUDA Toolkit 9.0
 - A GPU with compute capability 5.0 or higher
 
-The latest release was tested on Ubuntu 16.04
