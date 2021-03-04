@@ -40,9 +40,10 @@ __global__ void read_filter_one_layer (CNN_struct *settings, float *device_filte
 __global__ void weight_cpy_filter_to_neuronlist (CNN_struct *CNN_setttings, Neuron *NeuronList, int network_size, int input_neuron_size, float **filter, int current_layer){
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
     int index = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
+    //printf(" %d", index);
 	if(index<input_neuron_size) return;
     if(index>=network_size) return;
-//    printf(" %d", index);
+
 //	printf("relative %d, ", CNN_setttings->layer[current_layer].depth_list[0].first_neuron);
 
 
@@ -71,7 +72,7 @@ __global__ void weight_cpy_filter_to_neuronlist (CNN_struct *CNN_setttings, Neur
 	int i = 0;
 	//int current_depth = neuron_relative_index/number_of_neurons_per_depth + CNN_setttings->layer[current_layer].first_depth_id - 1;
 	int current_depth = NeuronList[index].param[7] - CNN_setttings->layer[current_layer].first_depth_id;
-
+//	printf("%d=", index);
 	//if(NeuronList[index].state[2]>0.1){//if post-synapse neuron fired
 		while(NeuronList[index].connected_in[i] > 0.1){
 			int connected_in = NeuronList[index].connected_in[i] - 1;
@@ -130,7 +131,7 @@ void shared_weight_gen(CNN_struct *network_config, float *filter_array[CNN_total
 		convolution_param current_conv = network_config->layer[layer_index].conv_setting;
 		//float *weight = new float[current_conv.filter_depth][network_config->layer[layer_index].depth][current_conv.filter_length][current_conv.filter_width];
 		srand (1);
-		int mid_conductance = 200;
+		int mid_conductance = 500;
 		const float kernel_template[3][3] = {
 		{1, 1, 1},
 		{1, 0, 1},
@@ -152,7 +153,8 @@ void shared_weight_gen(CNN_struct *network_config, float *filter_array[CNN_total
 			  for (int row = 0; row < current_conv.filter_length; ++row) {
 				for (int column = 0; column < current_conv.filter_width; ++column) {
 
-				  int fluct = 200 - (rand() % 400);
+				  int fluct = 50 - (rand() % 100);
+					if(non_random_weight_init) fluct = 0;
 				  //filter_mat[kernel][channel][row][column] = (mid_conductance+fluct)/1000.0;
 				  filter_mat[index_count] = (mid_conductance+fluct)/1000.0;
 				  index_count++;
@@ -240,6 +242,7 @@ int filter_util(CNN_struct *settings, Neuron *NeuronList, int network_size, int 
 		write_weight_to_file(settings, h_filter_array_temp, plot_prefix);
 	}
 	else if(function_select==2){//copy filter to NeuronList
+		cout<< "copy filter to NeuronList" <<endl;
 		CNN_struct *CNN_settings_device;
 	    cudaMalloc((void **)&CNN_settings_device, 1*sizeof(CNN_struct));
 	    cudaMemcpy(CNN_settings_device,settings,1*sizeof(CNN_struct),cudaMemcpyHostToDevice);
@@ -253,7 +256,9 @@ int filter_util(CNN_struct *settings, Neuron *NeuronList, int network_size, int 
 		dim3 dimBlock( ThreadsPerBlock, ThreadsPerBlock );
 		dim3 dimGrid( (SIZE_PER_SIDE/dimBlock.x+1), (SIZE_PER_SIDE/dimBlock.y+1));
 		for (int i=1;i<CNN_total_layer_num;i++){
+
 			weight_cpy_filter_to_neuronlist<<<dimGrid, dimBlock>>>(CNN_settings_device, NeuronList, network_size, input_neuron_size, device_filter_array, i);
+			//cout<<network_size<<", "<<input_neuron_size<<endl;
 		}
 
 		cudaFree(CNN_settings_device);

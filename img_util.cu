@@ -9,7 +9,7 @@
 #include<cuda.h>
 #include<math.h>
 #include <opencv2/opencv.hpp>
-
+#include <opencv2/core/core.hpp>
 using namespace std;
 
 
@@ -79,7 +79,7 @@ using namespace std;
 
 void load_image(float *img_data, string image_path) {
 
-  cv::Mat image = cv::imread(image_path.c_str(), CV_LOAD_IMAGE_COLOR);
+  cv::Mat image = cv::imread(image_path.c_str(), cv::IMREAD_COLOR);
 
   image.convertTo(image, CV_32FC3);
 

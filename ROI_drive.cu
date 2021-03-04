@@ -5,7 +5,7 @@
 #include<stdlib.h>
 #include <stdio.h>
 #include<time.h>
-#include<device_functions.h>
+//#include<device_functions.h>
 #include<cuda.h>
 #include<math.h>
 

@@ -36,6 +36,172 @@ void read_filter_data(string image_file, float *image, int num, int pixel_num){
 
 }
 
+void input_normalization(float *image, int input_dim, int toal_data_num){
+
+
+}
+
+
+void read_csv(string save_file_name, float *image, int total_img_num){
+	bool normalize = false;
+
+
+	int total_pixel_num = total_img_num *input_image_w*input_image_l*input_image_channel;
+    int one_img_pixel_num = input_image_w*input_image_l*input_image_channel;
+	ifstream file (save_file_name);
+	string one_line;
+	int read_cnt = 0;
+	int line_cnt = 0;
+
+
+	while (file.good()){
+		getline(file, one_line);
+		stringstream s(one_line);
+		string val;
+		while(getline(s, val, ',')){
+			if (val.empty()) break;
+			image[read_cnt] = stof(val);
+//			cout<<image[read_cnt]<<" ";
+			read_cnt ++;
+			if (read_cnt>=total_pixel_num){
+				break;
+			}
+			if ((read_cnt+1)%one_img_pixel_num==0) break;
+		}
+		line_cnt ++;
+//		cout<<endl;
+		if (line_cnt>=total_img_num) break;
+
+	}
+	cout<<"Total read pixel: "<<read_cnt<<endl;
+
+	if (normalize){
+		float input_max = 0.000001;
+
+		for (int i=0; i<total_pixel_num; i++) {
+			if(image[i]>input_max) input_max = image[i];
+		}
+
+		for (int i=0; i<total_pixel_num; i++) image[i] = image[i]/(input_max);
+
+
+
+	}
+
+	return;
+}
+
+
+void read_binary(string image_file, float *image, int num){
+	cout<<"Using read_binary, reading images from: "<<image_file<<endl;
+	bool if_normalize = false;
+
+	//this is for imagenet
+	//float norm_mean[3] = {0.485, 0.456, 0.406};
+	//float norm_std[3] = {0.229, 0.224, 0.225};
+
+	//this is for cifar
+	float norm_mean[3] = {0.4914, 0.4822, 0.4465};
+	float norm_std[3] = {0.2023, 0.1994, 0.2010};
+
+	ifstream ifs(image_file.c_str(), std::ios::in | std::ios::binary);
+	char p[4];
+
+	ifs.read(p, 4);
+
+	int magic_number = to_int(p);
+	assert(magic_number == 0x803);
+
+	ifs.read(p, 4);
+	int m_size = to_int(p);
+	printf("image number in file is:%d\n",m_size);
+	// limit
+	if (num != 0 && num < m_size) m_size = num;
+
+	ifs.read(p, 4);
+	int m_rows = to_int(p);
+
+	ifs.read(p, 4);
+	int m_cols = to_int(p);
+
+
+
+	if(m_cols!=input_image_w || m_rows!=input_image_l){
+		cout<<"=====Warning======: input image size mismatch"<<endl;
+		cout<<"File rows: "<<m_rows<<" file col: "<<m_cols<<endl;
+		//return;
+	}
+	m_cols=input_image_w; m_rows=input_image_l;
+	//cout<<"num of col: "<<to_string(m_cols)<<"\n";
+	//cout<<"num of row: "<<to_string(m_rows)<<'\n';
+	char* q = new char[m_rows * m_cols];
+	int total_pixel = 3*m_rows * m_cols;
+	for (int i=0; i<m_size; ++i) {
+		//ifs.read(q, m_rows * m_cols);
+	    //std::vector<double> image(m_rows * m_cols);
+
+	    //====
+		for (int chan=0;chan<input_image_channel;chan++){
+			for(int r=0;r<m_rows;++r)
+					{
+						//cout << '\t' << '[' ;
+						for(int c=0;c<m_cols;++c)
+						{
+							int index = chan*m_rows*m_cols+ r*(m_rows) + c + i*(total_pixel);
+							unsigned char temp = 0;
+							if ( ! ifs.read((char*)&temp,sizeof(temp))){
+								cout<< "error opening file";
+								return;
+							}
+							image[index] = float(temp)/(255.0);
+							//image[index] = 0;
+							//image[0] = 1;
+							if (if_normalize){
+								image[index] = (image[index]-norm_mean[chan])/norm_std[chan];
+
+								//if(image[index]<0) image[index]=0;
+							}
+
+							//cout << unsigned(temp) << ' ' << image[index] << ' '<< '|';
+							//cout << ((temp == 0.0)? ' ' : '*');
+						}
+						//cout << ']' << endl;
+					}
+			//cout << ']' << endl;
+			//====
+		}
+
+	 }
+
+	 delete[] q;
+
+	 ifs.close();
+
+
+	 int check_data = 1;
+	 if(check_data){
+		cout<<"output one sample read data..."<<endl;
+		int img_to_check = 24;
+		cimg_library::CImg<unsigned char> test_image("color_mid.jpg");
+		test_image.resize(input_image_w, input_image_l);
+		int img_k, img_i, img_j;
+		int count = img_to_check*3*input_image_w*input_image_l;
+		for(img_k=0;img_k<3;img_k++){
+			for (img_i=0;img_i<input_image_w;img_i++){
+				for (img_j=0;img_j<input_image_l;img_j++){
+					test_image(img_i, img_j, 0, img_k) = int(image[count]*255);
+					count ++;
+				}
+			}
+		}
+		string out_file_name = "mnist_read_test.jpg";
+		test_image.save(out_file_name.c_str());
+	 }
+
+
+
+}
+
 void CIFAR_read_image_one_channel(float *image, int image_size, int channel, int data_set_choise){
 
 	auto dataset = cifar::read_dataset<std::vector, std::vector, uint8_t, uint8_t>();
@@ -96,7 +262,7 @@ void CIFAR_read_image(float *image, int image_size, int total_img_num, int data_
 		int index = 0;
 
 		for (int i=0; i<size; ++i) {
-			if(i>=total_img_num) return;
+			if(i>total_img_num) return;
 			uint8_t *temp = dataset.training_images[i].data();
 			if(data_set_choise==1){
 				temp = dataset.test_images[i].data();
@@ -138,9 +304,13 @@ void CIFAR_read_image(float *image, int image_size, int total_img_num, int data_
 //			cout<<endl<<i<<endl;
 			if(i>=total_img_num) break;
 			uint8_t *temp = dataset.training_images[i].data();
+			uint8_t label = dataset.training_labels[i];
 			if(data_set_choise==1){
 				temp = dataset.test_images[i].data();
+				label = dataset.test_labels[i];
+
 			}
+			//if (i<100) printf("%d..", label);
 			for (int j=0; j<image_size; j++){
 				float temp_data = float(temp[j])/255.0;
 //				if(i>19000)cout<<" "<<temp_data;
@@ -152,14 +322,14 @@ void CIFAR_read_image(float *image, int image_size, int total_img_num, int data_
 
 		cimg_library::CImg<unsigned char> test_image("color.jpg");
 		test_image.resize(input_image_w, input_image_l);
-		uint8_t *temp = dataset.training_images[0].data();
+		uint8_t *temp = dataset.test_images[0].data();
 		cout<<"input_dim: "<<sizeof(temp)<<endl;
 		int img_k, img_i, img_j;
 		for(img_k=0;img_k<3;img_k++){
 			for (img_i=0;img_i<input_image_w;img_i++){
 				for (img_j=0;img_j<input_image_l;img_j++){
 					int count = img_k*input_image_w*input_image_l + img_i*input_image_l + img_j;
-					test_image(img_j, img_i, 0, img_k) = image[count]*255;
+					test_image(img_i, img_j, 0, img_k) = temp[count];
 				}
 			}
 		}
@@ -260,6 +430,164 @@ void GTVIR_read_image(float *image, int image_size, int total_img_num){
 	}
 }
 
+int IBM_DVS128_event_based(string file_name, Event_Camera_Input *events, int total_event, int total_img_num){
+
+	//int total_event_num = total_img_num *input_image_w*input_image_l*input_image_channel;
+
+	ifstream file (file_name);
+
+	string val;
+	//cout<<"max_string_size: "<<val.max_size()<<endl;
+
+	int i = 0;
+	int total_line = 0;
+	while(getline(file, val)){
+		//cout<<"reading a new line"<<endl;
+		total_line ++;
+		stringstream ss(val);
+		while(ss.good()){
+			string one_val;
+			getline(ss, one_val, ',');
+			events[i].loc_x = stoi(one_val);
+			//cout<<'|'<<one_val<<" "<<events[i].loc_x<<'|';
+			if (!ss.good()){
+				//cout<<endl<<"end"<<endl;
+				break;
+			}
+
+			getline(ss, one_val, ',');
+			events[i].loc_y = stoi(one_val);
+			//cout<<'|'<<one_val<<" "<<events[i].loc_y<<'|';
+			if (!ss.good()){
+				//cout<<endl<<"end"<<endl;
+				break;
+			}
+			if(events[i].loc_x>input_image_w||events[i].loc_y>input_image_l) printf("___warning___reading data error");
+
+			getline(ss, one_val, ',');
+			events[i].time = stoul(one_val);
+			//cout<<'|'<<one_val<<" "<<events[i].time<<'|';
+			if (!ss.good()){
+				//cout<<endl<<"end"<<endl;
+				break;
+			}
+
+			getline(ss, one_val, ',');
+			events[i].sign = stoi(one_val);
+			events[i].valid = True;
+			//cout<<'|'<<one_val<<" "<<events[i].sign<<'|';
+			i ++;
+			if (!ss.good()){
+				//cout<<endl<<"end"<<endl;
+				break;
+			}
+		}
+	}
+
+
+	cout<<"Total events read: "<<i<<", total line: "<<total_line<<endl;
+
+//	for(int j=0; j<i+1; j++){
+//		if (events[j].valid==False) {
+//			//cout<<"|invalid event== no. "<<i<<" data: "<<events[i].loc_x<<" ,"<<events[i].loc_y<<" ,"<<events[i].time<<" ,"<<events[i].sign<<"|";
+//			break;
+//		}
+//		cout<<"|event no. "<<j<<" data: "<<events[j].loc_x<<" ,"<<events[j].loc_y<<" ,"<<events[j].time<<" ,"<<events[j].sign<<"|";
+//	}
+
+
+	return i;
+
+}
+
+int IBM_DVS128_event_based_one_line(string file_name, Event_Camera_Input *events, int this_file_total_line, int target_line){
+
+	//int total_event_num = total_img_num *input_image_w*input_image_l*input_image_channel;
+	if (target_line>=this_file_total_line){
+		cout<<"error: target line too big"<<endl;
+		return 0;
+	}
+	ifstream file (file_name);
+
+	string val;
+	//cout<<"max_string_size: "<<val.max_size()<<endl;
+
+	int i = 0;
+
+    for(int i=0; i <= target_line - 1; ++i){
+        file.ignore(std::numeric_limits<std::streamsize>::max(),'\n');
+    }
+
+	if(getline(file, val)){
+		//cout<<"reading a new line"<<endl;
+
+		stringstream ss(val);
+		while(ss.good()){
+			string one_val;
+			getline(ss, one_val, ',');
+			events[i].loc_x = stoi(one_val);
+			//cout<<'|'<<one_val<<" "<<events[i].loc_x<<'|';
+			if (!ss.good()){
+				//cout<<endl<<"end"<<endl;
+				break;
+			}
+
+			getline(ss, one_val, ',');
+			events[i].loc_y = stoi(one_val);
+			//cout<<'|'<<one_val<<" "<<events[i].loc_y<<'|';
+			if (!ss.good()){
+				//cout<<endl<<"end"<<endl;
+				break;
+			}
+			if(events[i].loc_x>input_image_w||events[i].loc_y>input_image_l) printf("___warning___reading data error");
+
+			getline(ss, one_val, ',');
+			events[i].time = stoul(one_val);
+			//cout<<'|'<<one_val<<" "<<events[i].time<<'|';
+			if (!ss.good()){
+				//cout<<endl<<"end"<<endl;
+				break;
+			}
+
+			getline(ss, one_val, ',');
+			events[i].sign = stoi(one_val);
+			events[i].valid = True;
+			//cout<<'|'<<one_val<<" "<<events[i].sign<<'|';
+			i ++;
+			if (!ss.good()){
+				//cout<<endl<<"end"<<endl;
+				break;
+			}
+		}
+	}else{
+		cout<<"error: target line unreachable"<<endl;
+		return 0;
+	}
+
+	//cout<<"Total events read: "<<i<<endl;
+
+//	for(int j=0; j<i+1; j++){
+//		if (events[j].valid==False) {
+//			//cout<<"|invalid event== no. "<<i<<" data: "<<events[i].loc_x<<" ,"<<events[i].loc_y<<" ,"<<events[i].time<<" ,"<<events[i].sign<<"|";
+//			break;
+//		}
+//		cout<<"|event no. "<<j<<" data: "<<events[j].loc_x<<" ,"<<events[j].loc_y<<" ,"<<events[j].time<<" ,"<<events[j].sign<<"|";
+//	}
+	return i;
+}
+
+int IBM_DVS128_event_based_count_line(string file_name){
+
+	//int total_event_num = total_img_num *input_image_w*input_image_l*input_image_channel;
+	ifstream file (file_name);
+	string val;
+	int total_line = 0;
+	while(getline(file, val)){
+		total_line ++;
+	}
+	return total_line;
+}
+
 void CIFAR_read_label(int *label, int data_set_choise){
 	auto dataset = cifar::read_dataset<std::vector, std::vector, uint8_t, uint8_t>();
 	if(data_set_choise==1){
@@ -283,10 +611,14 @@ void CIFAR_read_label(int *label, int data_set_choise){
 }
 
 void MNIST_read_image(string image_file, float *image , int num){
+	cout<<"reading images from: "<<image_file<<endl;
+	bool if_normalize = false;
+
 	ifstream ifs(image_file.c_str(), std::ios::in | std::ios::binary);
 	char p[4];
 
 	ifs.read(p, 4);
+
 	int magic_number = to_int(p);
 	assert(magic_number == 0x803);
 
@@ -306,7 +638,8 @@ void MNIST_read_image(string image_file, float *image , int num){
 
 	if(m_cols!=input_image_w || m_rows!=input_image_l){
 		cout<<"=====Warning======: input image size mismatch"<<endl;
-		return;
+		cout<<"File rows: "<<m_rows<<" file col: "<<m_cols<<endl;
+		//return;
 	}
 	m_cols=input_image_w; m_rows=input_image_l;
 	//cout<<"num of col: "<<to_string(m_cols)<<"\n";
@@ -327,8 +660,17 @@ void MNIST_read_image(string image_file, float *image , int num){
 	                    unsigned char temp = 0;
 	                    if ( ! ifs.read((char*)&temp,sizeof(temp))){
 	                    	cout<< "error opening file";
+	                    	return;
 	                    }
 	                    image[index] = float(temp)/(255.0);
+	                    //image[index] = 0;
+	                    //image[0] = 1;
+	                    if (if_normalize){
+	                    	image[index] = (image[index]-0.1307)/0.3081;
+
+	                    	//if(image[index]<0) image[index]=0;
+	                    }
+
 	                    //cout << unsigned(temp) << ' ' << image[index] << ' '<< '|';
 	                    //cout << ((temp == 0.0)? ' ' : '*');
 	                }
@@ -342,6 +684,27 @@ void MNIST_read_image(string image_file, float *image , int num){
 	 delete[] q;
 
 	 ifs.close();
+
+	 int check_data = 1;
+	 if(check_data){
+		cout<<"output one sample read data..."<<endl;
+		int img_to_check = 0;
+		cimg_library::CImg<unsigned char> test_image("color_mid.jpg");
+		test_image.resize(input_image_w, input_image_l);
+		int img_k, img_i, img_j;
+		for(img_k=0;img_k<3;img_k++){
+			for (img_i=0;img_i<input_image_w;img_i++){
+				for (img_j=0;img_j<input_image_l;img_j++){
+					int count = img_i*input_image_l + img_j + img_to_check*input_image_w*input_image_l;
+
+					test_image(img_i, img_j, 0, img_k) = int(image[count]*255);
+				}
+			}
+		}
+		string out_file_name = "mnist_read_test.jpg";
+		test_image.save(out_file_name.c_str());
+	 }
+
 }
 
 void MNIST_read_label(string label_file, int *label, int num){
@@ -368,6 +731,231 @@ void MNIST_read_label(string label_file, int *label, int num){
 
 }
 
+
+void DVS_read_image_8bit(string image_file, float *image , int num){
+	cout<<"reading images from: "<<image_file<<endl;
+	bool if_normalize = false;
+
+	ifstream ifs(image_file.c_str(), std::ios::in | std::ios::binary);
+	char p[4];
+
+
+	ifs.read(p, 4);
+	int m_cols = to_int(p);
+
+	ifs.read(p, 4);
+	int m_rows = to_int(p);
+
+	ifs.read(p, 4);
+	int magic_number = to_int(p);
+	assert(magic_number == input_image_channel);
+
+	ifs.read(p, 4);
+	int m_size = to_int(p);
+	//printf("m_size_is:%d\n",m_size);
+	// limit
+
+	if (num != 0 && num < m_size) m_size = num;
+
+
+	if(m_cols!=input_image_w || m_rows!=input_image_l){
+		cout<<"=====Warning======: input image size mismatch"<<endl;
+		cout<<"File rows: "<<m_rows<<" file col: "<<m_cols<<endl;
+		//return;
+	}
+	//m_cols=input_image_w; m_rows=input_image_l;
+	cout<<"num of col: "<<to_string(m_cols)<<"\n";
+	cout<<"num of row: "<<to_string(m_rows)<<'\n';
+	cout<<"num of frames: "<<to_string(m_size)<<'\n';
+	char* q = new char[m_rows * m_cols];
+	int total_pixel = m_rows * m_cols * input_image_channel;
+	char temp = 0;
+
+	for (int i=0; i<m_size; ++i) {
+		//ifs.read(q, m_rows * m_cols);
+	    //std::vector<double> image(m_rows * m_cols);
+
+	    //====
+		for(int ii=0; ii<input_image_channel; ii++){
+			for(int r=0;r<m_rows;++r)
+					{
+						//cout << '\t' << '[' ;
+						for(int c=0;c<m_cols;++c)
+						{
+							long index = c + r*(m_cols) + ii*m_cols*m_rows + i*(total_pixel);
+		                    unsigned char temp = 0;
+		                    if ( ! ifs.read((char*)&temp,sizeof(temp))){
+		                    	cout<< "error opening file";
+		                    	return;
+		                    }
+		                    image[index] = temp;
+//		                    cout<<image[index];
+							//int shift_bit = 7-index%8;
+							//if (index%8==0){
+								//if ( ! ifs.read((char*)&temp,sizeof(temp))){
+							//	if (! ifs.get(temp)){
+							//		cout<< "error opening file";
+							//		return;
+							//	}
+							//}
+							//cout<<index<<" "<<index%8<<"|";
+							//for (int bb=7; bb>=0; bb--){
+							//cout<<((temp>>shift_bit)&1);
+							//cout<<shift_bit;
+							//cout<<int((temp & (1 << shift_bit)));
+							//cout<<" ";
+							//}
+							//image[index] = float(temp);
+							//image[index] = 0;
+							//image[0] = 1;
+
+							//cout << unsigned(temp) << ' ' << image[index] << ' '<< '|';
+							//cout << ((temp == 0.0)? ' ' : '*');
+						}
+						//cout << ']' << endl;
+					}
+
+		}
+
+
+	 }
+
+	 delete[] q;
+
+	 ifs.close();
+
+	 int check_data = 1;
+	 if(check_data){
+		cout<<"output one sample read data..."<<endl;
+		int img_to_check = 0;
+		cimg_library::CImg<unsigned char> test_image("color_mid.jpg");
+		test_image.resize(input_image_w, input_image_l);
+		int img_k, img_i, img_j;
+		for(img_k=0;img_k<3;img_k++){
+			for (img_i=0;img_i<input_image_w;img_i++){
+				for (img_j=0;img_j<input_image_l;img_j++){
+					int count = img_i*input_image_l + img_j + img_to_check*input_image_w*input_image_l;
+
+					test_image(img_i, img_j, 0, img_k) = int(image[count]*255);
+				}
+			}
+		}
+		string out_file_name = "mnist_read_test.jpg";
+		test_image.save(out_file_name.c_str());
+	 }
+
+}
+
+
+void NTU_skeleton_read_image(string image_file, float *image , int num, int offset){
+	cout<<"reading images from: "<<image_file<<endl;
+	bool if_normalize = false;
+
+	ifstream ifs(image_file.c_str(), std::ios::in | std::ios::binary);
+	char p[4];
+
+
+	ifs.read(p, 4);
+	int m_cols = to_int(p);
+
+	ifs.read(p, 4);
+	int m_rows = to_int(p);
+
+	ifs.read(p, 4);
+	int magic_number = to_int(p);
+	printf("magic_number: %d", magic_number);
+	assert(magic_number == input_image_channel);
+
+	ifs.read(p, 4);
+	int m_size = to_int(p);
+	printf("m_size_is:%d\n",m_size);
+	// limit
+
+	if (num != 0 && num < m_size) m_size = num;
+
+
+	if(m_cols!=input_image_w || m_rows!=input_image_l){
+		cout<<"=====Warning======: input image size mismatch"<<endl;
+		cout<<"File rows: "<<m_rows<<" file col: "<<m_cols<<endl;
+		//return;
+	}
+	//m_cols=input_image_w; m_rows=input_image_l;
+	cout<<"num of col: "<<to_string(m_cols)<<"\n";
+	cout<<"num of row: "<<to_string(m_rows)<<'\n';
+	cout<<"num of frames: "<<to_string(m_size)<<'\n';
+	char* q = new char[m_rows * m_cols];
+	int total_pixel = m_rows * m_cols * input_image_channel;
+	long long pixel_offset = offset*total_pixel;
+	//char temp = 0;
+	long long offset_counter = 0;
+	unsigned char temp = 0;
+	long index = 0;
+	long max_read = total_pixel*m_size;
+	while (ifs.read((char*)&temp,sizeof(temp))){
+		//unsigned char temp = 0;
+		for (int bb=0; bb<8; bb++){
+			int bit = (temp >> bb)&1;
+			//if(bit) cout<<index<<" ";
+			//cout<<shift_bit;
+			//cout<<int((temp & (1 << shift_bit)));
+			//cout<<" ";
+			if (offset_counter>=pixel_offset){
+				image[index] = bit;
+				index ++;
+			}
+			offset_counter++;
+			if (index>=max_read) break;
+		}
+		if (index>=max_read) break;
+	}
+
+	//cout<<image[index];
+	//int shift_bit = 7-index%8;
+	//if (index%8==0){
+	//if ( ! ifs.read((char*)&temp,sizeof(temp))){
+	//	if (! ifs.get(temp)){
+	//		cout<< "error opening file";
+	//		return;
+	//	}
+	//}
+	//cout<<index<<" "<<index%8<<"|";
+
+	//image[index] = float(temp);
+	//image[index] = 0;
+	//image[0] = 1;
+
+	//cout << unsigned(temp) << ' ' << image[index] << ' '<< '|';
+	//cout << ((temp == 0.0)? ' ' : '*');
+
+	//cout << ']' << endl;
+
+
+	 delete[] q;
+
+	 ifs.close();
+
+	 int check_data = 1;
+	 if(check_data){
+		cout<<"output one sample read data..."<<endl;
+		int img_to_check = 1;
+		cimg_library::CImg<unsigned char> test_image("color_mid.jpg");
+		test_image.resize(input_image_w, input_image_l);
+		int img_k, img_i, img_j;
+		for(img_k=0;img_k<3;img_k++){
+			for (img_i=0;img_i<input_image_w;img_i++){
+				for (img_j=0;img_j<input_image_l;img_j++){
+					int count = img_i*input_image_l + img_j + img_to_check*input_image_w*input_image_l;
+
+					test_image(img_i, img_j, 0, img_k) = int(image[count]*255);
+				}
+			}
+		}
+		string out_file_name = "mnist_read_test.jpg";
+		test_image.save(out_file_name.c_str());
+	 }
+
+}
+
 void KAIST_PED_read_image(string image_path, float *image , int num){
 	bool load_from_csv = False;
 	bool write_to_file = False;
@@ -389,7 +977,7 @@ void KAIST_PED_read_image(string image_path, float *image , int num){
 				break;
 			}
 		}
-		bool check_loaded = True;
+		bool check_loaded = true;
 		if(check_loaded){
 			int i = 0;
 			cimg_library::CImg<unsigned char> temp_image("Logo-Free.jpg");
@@ -666,29 +1254,28 @@ void read_polygon(string folder_to_read, float *image, int num){
 	float input_w_l_ratio = input_image_w/input_image_l;
 
 	cur_dir += folder_to_read;
-	cout<<"Reading data from: "<<cur_dir<<endl;
+	cout<<"Reading data from: "<<cur_dir<<", total num: "<<num<<endl;
 	fs::path Path(cur_dir);
 
 	typedef vector<fs::path> vec;
 	vec v;
 	copy(fs::directory_iterator(Path), fs::directory_iterator(),  back_inserter(v));
 	sort(v.begin(), v.end());
-
+	cout<<"path vector size: "<<v.size()<<endl;
 
 	fs::directory_iterator end_iter;
 	int folder_image_cnt = 0;
-	for(vec::const_iterator iter(v.begin()), it_end(v.end());iter!=it_end; ++iter){
+	for(vec::const_iterator iter=v.begin();iter!=v.end(); ++iter){
 
 //			cout<<iter->path()<<endl;
 
-		if(folder_image_cnt>100){
-			break;
-		}
+
 		fs::path temp = *iter;
 
+		//cout<<temp.string()<<endl;
 		if(temp.extension() == ".png"){
 			string full_dir = temp.string();
-			cout<<"Reading images from "<<full_dir<<endl;
+			//cout<<"Reading images from "<<full_dir<<endl;
 //			if (total_image_cnt%1000==0) cout<<to_string(total_image_cnt)<<' images read';
 			if (!(access( full_dir.c_str(), F_OK ) != -1)) cout<<"Wrong file name!"<<endl;
 			cimg_library::CImg<unsigned char> temp_image(full_dir.c_str());
@@ -708,8 +1295,9 @@ void read_polygon(string folder_to_read, float *image, int num){
 			//cout<<full_dir<<endl;
 			//fs.open(full_dir.c_str());
 			total_image_cnt ++;
-
+			//cout<<total_image_cnt<<endl;
 			if(total_image_cnt>=num){
+				cout<<"Ending from overflowing data memory"<<endl;
 				return;
 			}
 		}

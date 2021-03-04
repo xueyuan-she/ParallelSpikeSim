@@ -16,14 +16,14 @@
     }                                                        \
   }
 
-cv::Mat load_image(const char* image_path) {
-  cv::Mat image = cv::imread(image_path, CV_LOAD_IMAGE_COLOR);
-  image.convertTo(image, CV_32FC3);
-  cv::normalize(image, image, 0, 1, cv::NORM_MINMAX);
-  std::cerr << "Input Image: " << image.rows << " x " << image.cols << " x "
-            << image.channels() << std::endl;
-  return image;
-}
+//cv::Mat load_image(const char* image_path) {
+//  cv::Mat image = cv::imread(image_path, CV_LOAD_IMAGE_COLOR);
+//  image.convertTo(image, CV_32FC3);
+//  cv::normalize(image, image, 0, 1, cv::NORM_MINMAX);
+//  std::cerr << "Input Image: " << image.rows << " x " << image.cols << " x "
+//            << image.channels() << std::endl;
+//  return image;
+//}
 
 void save_image(const char* output_filename,
                 float* buffer,
@@ -257,6 +257,7 @@ int convolution_kernel_setup(Convolution_setting_struct *convolution_settings, C
 		output_batch_size = 1;
 		output_height = settings->layer[layer_index+1].depth_list[0].length;
 		output_width = settings->layer[layer_index+1].depth_list[0].width;
+		printf("\n=====Input Channel: %d, height: %d, width: %d___output: %d, %d, %d=====\n", input_channel, input_height, input_width, output_channel, output_height, output_width);
 	}else{
 		filter_in_channel = settings->layer[layer_index+1].conv_setting.filter_depth;
 		filter_out_channel = settings->layer[layer_index+1].depth;
@@ -281,14 +282,14 @@ int convolution_kernel_setup(Convolution_setting_struct *convolution_settings, C
 
 
 	cudnnHandle_t cudnn;
-	cudnnCreate(&cudnn);
+	checkCudnnErr(cudnnCreate(&cudnn));
 
 
 
 	cudnnTensorDescriptor_t input_descriptor;
 	checkCudnnErr(cudnnCreateTensorDescriptor(&input_descriptor));
 	checkCudnnErr(cudnnSetTensor4dDescriptor(input_descriptor,
-										/*format=*/CUDNN_TENSOR_NHWC,
+										/*format=*/CUDNN_TENSOR_NCHW,
 										/*dataType=*/CUDNN_DATA_FLOAT,
 										/*batch_size=*/input_batch_size,
 										/*channels=*/input_channel,
@@ -338,7 +339,7 @@ int convolution_kernel_setup(Convolution_setting_struct *convolution_settings, C
 	cudnnTensorDescriptor_t output_descriptor;
 	checkCudnnErr(cudnnCreateTensorDescriptor(&output_descriptor));
 	checkCudnnErr(cudnnSetTensor4dDescriptor(output_descriptor,
-										/*format=*/CUDNN_TENSOR_NHWC,
+										/*format=*/CUDNN_TENSOR_NCHW,
 										/*dataType=*/CUDNN_DATA_FLOAT,
 										/*batch_size=*/output_batch_size,
 										/*channels=*/output_channel,
@@ -366,8 +367,8 @@ int convolution_kernel_setup(Convolution_setting_struct *convolution_settings, C
 														output_descriptor,
 														convolution_algorithm,
 															&workspace_bytes));
-	//std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB" << std::endl;
-	assert(workspace_bytes > 0);
+	std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB" << std::endl;
+	//assert(workspace_bytes > 0);
 
 	void* d_workspace{nullptr};
 	cudaMalloc(&d_workspace, workspace_bytes);

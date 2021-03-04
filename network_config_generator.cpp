@@ -10,6 +10,8 @@
 #include <array>
 #include "header.h"
 #include <cudnn.h>
+
+#include <random>
 using namespace std;
 #define process_variation 1
 #define process_std 0.02
@@ -286,11 +288,11 @@ void spike_cnn_gen(CNN_struct *network_config){
 
 	int param_num = 8;
 	int state_num = 8;
-	int mid_conductance = 150;
+	int mid_conductance = 100;
 
 	int different_parameter = 0;
 
-	float param_temp[8] = {0.01, -60.2, -74.7, 20, 0.314, -2.07, 0, 0};
+	float param_temp[8] = {0.01, -60.2, -74.7, 20, 0.314, -0.27, 0, 0};
 	float state_temp[8] = {-70, 0, 0, 0, 0, 0, 0, 0};
 	float input_param_temp[8] = {1, 0, 0, 0, 0, 0, 0, 0};
 	float input_state_temp[8] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -423,7 +425,7 @@ void spike_cnn_gen(CNN_struct *network_config){
 														//if(neuron_count==7501)cout<<start_neuron_id<<" "<<mapped_y<<" "<<mapped_x<<endl;
 														if(mapped_index<=input_depth.last_neuron){
 															float cdt = 0;
-															int fluct = 150 - (rand() % 300);
+															int fluct = 10 - (rand() % 20);
 															//if(second_i==1)cout<<fluct<<", ";
 															//fluct = 0;
 															cdt = (mid_conductance+fluct)/1000.0;
@@ -661,15 +663,17 @@ void CNN_get_dimension(CNN_struct *settings, int layer_index, int *width_result,
 	input_height = settings->layer[layer_index-1].length;
 	input_width = settings->layer[layer_index-1].width;
 
-	cudnnHandle_t cudnn;
-	cudnnCreate(&cudnn);
+//	cout<<"***********"<<endl<<filter_in_channel<<','<<filter_out_channel<<','<<filter_height<<','<<filter_width<<','<<input_channel<<','<<input_height<<','<<input_width<<','<<endl;
+
+//	cudnnHandle_t cudnn;
+//	cudnnCreate(&cudnn);
 
 
 
 	cudnnTensorDescriptor_t input_descriptor;
 	cudnnCreateTensorDescriptor(&input_descriptor);
 	cudnnSetTensor4dDescriptor(input_descriptor,
-										/*format=*/CUDNN_TENSOR_NHWC,
+										/*format=*/CUDNN_TENSOR_NCHW,
 										/*dataType=*/CUDNN_DATA_FLOAT,
 										/*batch_size=*/input_batch_size,
 										/*channels=*/input_channel,
@@ -725,7 +729,7 @@ void CNN_get_dimension(CNN_struct *settings, int layer_index, int *width_result,
 	cudnnDestroyFilterDescriptor(kernel_descriptor);
 	cudnnDestroyConvolutionDescriptor(convolution_descriptor);
 
-	cudnnDestroy(cudnn);
+//	cudnnDestroy(cudnn);
 
 }
 
@@ -756,14 +760,14 @@ void CNN_sturct_build(CNN_struct *network_config){
 				conv_build.dilation_height = 1;
 				conv_build.dilation_width = 1;											//If all connect, use:
 				conv_build.filter_depth = network_config->layer[layer_index-1].depth;	//network_config->layer[layer_index-1].depth;
-				conv_build.filter_length = 	3;//network_config->layer[layer_index-1].length; //3;
+				conv_build.filter_length = 3;//network_config->layer[layer_index-1].length; //3;
 				conv_build.filter_width = 3;//network_config->layer[layer_index-1].width;		//3;
-				conv_build.horizontal_stride = 1;
-				conv_build.vertical_stride = 1;
+				conv_build.horizontal_stride = 2;
+				conv_build.vertical_stride = 2;
 				conv_build.pad_height = 1;
 				conv_build.pad_width = 1;
 
-				network_config->layer[layer_index].depth = 32;
+				network_config->layer[layer_index].depth = 16;
 				network_config->layer[layer_index].conv_setting = conv_build;
 				network_config->layer[layer_index].layer_id = layer_index;
 				network_config->layer[layer_index].input_layer = layer_index - 1;
@@ -774,11 +778,11 @@ void CNN_sturct_build(CNN_struct *network_config){
 				conv_build.filter_depth = network_config->layer[layer_index-1].depth;
 				conv_build.filter_length = 3;//network_config->layer[0].length;;
 				conv_build.filter_width = 3;//network_config->layer[0].width;;
-				conv_build.horizontal_stride = 1;
-				conv_build.vertical_stride = 1;
+				conv_build.horizontal_stride = 2;
+				conv_build.vertical_stride = 2;
 				conv_build.pad_height = 1;
 				conv_build.pad_width = 1;
-				network_config->layer[layer_index].depth = 40;
+				network_config->layer[layer_index].depth = 32;
 				network_config->layer[layer_index].conv_setting = conv_build;
 
 				network_config->layer[layer_index].layer_id = layer_index;
@@ -788,14 +792,30 @@ void CNN_sturct_build(CNN_struct *network_config){
 				conv_build.dilation_height = 1;
 				conv_build.dilation_width = 1;
 				conv_build.filter_depth = network_config->layer[layer_index-1].depth;
-				conv_build.filter_length = 3;
-				conv_build.filter_width = 3;
+				conv_build.filter_length = 7;
+				conv_build.filter_width = 7;
 				conv_build.horizontal_stride = 1;
 				conv_build.vertical_stride = 1;
+				conv_build.pad_height = 0;
+				conv_build.pad_width = 0;
+
+				network_config->layer[layer_index].depth = 16;
+				network_config->layer[layer_index].conv_setting = conv_build;
+				network_config->layer[layer_index].layer_id = layer_index;
+				network_config->layer[layer_index].input_layer = layer_index - 1;
+
+			}else if(layer_index==4){
+				conv_build.dilation_height = 1;
+				conv_build.dilation_width = 1;
+				conv_build.filter_depth = network_config->layer[layer_index-1].depth;
+				conv_build.filter_length = 3;
+				conv_build.filter_width = 3;
+				conv_build.horizontal_stride = 2;
+				conv_build.vertical_stride = 2;
 				conv_build.pad_height = 1;
 				conv_build.pad_width = 1;
 
-				network_config->layer[layer_index].depth = 56;
+				network_config->layer[layer_index].depth = 128;
 				network_config->layer[layer_index].conv_setting = conv_build;
 				network_config->layer[layer_index].layer_id = layer_index;
 				network_config->layer[layer_index].input_layer = layer_index - 1;
@@ -850,6 +870,158 @@ void CNN_sturct_build(CNN_struct *network_config){
 	}
 }
 
+void HSNN_sturct_build(CNN_struct *network_config, int *depth_list){
+	printf("Building HSNN struct\n");
+	cout<<depth_list[0]<<" "<<depth_list[1]<<" "<<depth_list[2]<<endl;
+	int depth_id_count = 0;
+	//define the network here
+	for (int layer_index=0; layer_index<CNN_total_layer_num; layer_index++){
+
+			convolution_param conv_build;
+			if(layer_index==0){//this is the input layer
+				conv_build.dilation_height = 1;
+				conv_build.dilation_width = 1;
+				conv_build.filter_depth = 1;
+				conv_build.filter_length = 0;
+				conv_build.filter_width = 0;
+				conv_build.horizontal_stride = 1;
+				conv_build.vertical_stride = 1;
+				conv_build.pad_height = 1;
+				conv_build.pad_width = 1;
+
+				network_config->layer[layer_index].depth = input_image_channel;
+				network_config->layer[layer_index].conv_setting = conv_build;
+				network_config->layer[layer_index].layer_id = layer_index;
+				network_config->layer[layer_index].input_layer = layer_index - 1;
+				network_config->layer[layer_index].width = input_image_w; //stride = 1
+				network_config->layer[layer_index].length = input_image_l;
+			}else if(layer_index==1){
+				conv_build.dilation_height = 1;
+				conv_build.dilation_width = 1;											//If all connect, use:
+				conv_build.filter_depth = network_config->layer[layer_index-1].depth;	//network_config->layer[layer_index-1].depth;
+				conv_build.filter_length = 5;//network_config->layer[layer_index-1].length; //3;
+				conv_build.filter_width = 5;//network_config->layer[layer_index-1].width;		//3;
+				conv_build.horizontal_stride = 4;
+				conv_build.vertical_stride = 4;
+				conv_build.pad_height = 0;
+				conv_build.pad_width = 0;
+
+				if(depth_list[layer_index-1]>0) network_config->layer[layer_index].depth = depth_list[layer_index-1];
+				else cout<<"Warning: Error in HSNN depth list"<<endl;
+				network_config->layer[layer_index].conv_setting = conv_build;
+				network_config->layer[layer_index].layer_id = layer_index;
+				network_config->layer[layer_index].input_layer = layer_index - 1;
+
+			}else if(layer_index==2){
+				conv_build.dilation_height = 1;
+				conv_build.dilation_width = 1;
+				conv_build.filter_depth = network_config->layer[layer_index-1].depth;
+				conv_build.filter_length = 3;//network_config->layer[0].length;;
+				conv_build.filter_width = 3;//network_config->layer[0].width;;
+				conv_build.horizontal_stride = 2;
+				conv_build.vertical_stride = 2;
+				conv_build.pad_height = 0;
+				conv_build.pad_width = 0;
+				if(depth_list[layer_index-1]>0) network_config->layer[layer_index].depth = depth_list[layer_index-1];
+				else cout<<"Warning: Error in HSNN depth list"<<endl;
+				network_config->layer[layer_index].conv_setting = conv_build;
+
+				network_config->layer[layer_index].layer_id = layer_index;
+				network_config->layer[layer_index].input_layer = layer_index - 1;
+
+			}else if(layer_index==3){
+				conv_build.dilation_height = 1;
+				conv_build.dilation_width = 1;
+				conv_build.filter_depth = network_config->layer[layer_index-1].depth;
+				conv_build.filter_length = 7;
+				conv_build.filter_width = 7;
+				conv_build.horizontal_stride = 2;
+				conv_build.vertical_stride = 2;
+				conv_build.pad_height = 0;
+				conv_build.pad_width = 0;
+
+				if(depth_list[layer_index-1]>0) network_config->layer[layer_index].depth = depth_list[layer_index-1];
+				else cout<<"Warning: Error in HSNN depth list"<<endl;
+				network_config->layer[layer_index].conv_setting = conv_build;
+				network_config->layer[layer_index].layer_id = layer_index;
+				network_config->layer[layer_index].input_layer = layer_index - 1;
+
+			}else if(layer_index==4){
+				conv_build.dilation_height = 1;
+				conv_build.dilation_width = 1;
+				conv_build.filter_depth = network_config->layer[layer_index-1].depth;
+				conv_build.filter_length = 3;
+				conv_build.filter_width = 3;
+				conv_build.horizontal_stride = 2;
+				conv_build.vertical_stride = 2;
+				conv_build.pad_height = 1;
+				conv_build.pad_width = 1;
+
+				network_config->layer[layer_index].depth = 128;
+				network_config->layer[layer_index].conv_setting = conv_build;
+				network_config->layer[layer_index].layer_id = layer_index;
+				network_config->layer[layer_index].input_layer = layer_index - 1;
+
+			}
+	}
+
+	for (int layer_index=0; layer_index<CNN_total_layer_num; layer_index++){
+		printf("Layer:%d\n", layer_index);
+		convolution_param conv_build;
+		if(layer_index==0){//this is the input layer
+
+		}else{
+			int *width_result = new int[1];
+			int *length_result = new int[1];
+			CNN_get_dimension(network_config, layer_index, width_result, length_result);
+
+			network_config->layer[layer_index].width = width_result[0]; //stride = 1
+			network_config->layer[layer_index].length = length_result[0];
+		}
+
+		//cout<<"current depth is:"<<network_config->layer[layer_index].depth<<endl;
+		network_config->layer[layer_index].neuron_num = network_config->layer[layer_index].width * network_config->layer[layer_index].length * network_config->layer[layer_index].depth;
+		if(layer_index==0){
+			network_config->layer[layer_index].first_depth_id = 0;
+			network_config->layer[layer_index].last_depth_id = network_config->layer[0].depth - 1;
+		}else{
+			network_config->layer[layer_index].first_depth_id = network_config->layer[layer_index-1].last_depth_id + 1;
+			network_config->layer[layer_index].last_depth_id = network_config->layer[layer_index-1].last_depth_id + network_config->layer[layer_index].depth;
+		}
+		cout<<"first depth: "<<network_config->layer[layer_index].first_depth_id<<" last depth: "<<network_config->layer[layer_index].last_depth_id<<endl;
+		for(int i=0; i<network_config->layer[layer_index].depth; i++){
+			depth_struct current_depth;
+			current_depth.id = depth_id_count;
+//			printf("#%d", current_depth.id);
+			current_depth.total_neuron_num = network_config->layer[layer_index].width * network_config->layer[layer_index].length;
+			current_depth.width = network_config->layer[layer_index].width;
+			current_depth.length = network_config->layer[layer_index].length;
+			if(i==0){
+				if(layer_index==0){
+					current_depth.first_neuron = 0;
+				}else{
+					current_depth.first_neuron = network_config->layer[layer_index-1].depth_list[(network_config->layer[layer_index-1].depth-1)].last_neuron + 1;
+				}
+			}else{
+				current_depth.first_neuron = network_config->layer[layer_index].depth_list[i-1].last_neuron + 1;
+			}
+			current_depth.last_neuron = current_depth.first_neuron + current_depth.total_neuron_num - 1;
+			network_config->layer[layer_index].depth_list[i] = current_depth;
+			depth_id_count ++;
+		}
+	}
+}
+
+int hsnn_config_generator(int* depth_list, CNN_struct *settings){
+	//HSNN generator, first build CNN struct
+
+	HSNN_sturct_build(settings, depth_list);
+	//Then, write to file
+	spike_cnn_gen(settings);
+
+	return 0;
+}
+
 int network_config_generator(int function_select, CNN_struct *settings){
 
 	switch(function_select){
@@ -900,7 +1072,6 @@ int network_config_generator(int function_select, CNN_struct *settings){
 			}
 			*/
 		}
-
 		break;
 	}
 	return 0;

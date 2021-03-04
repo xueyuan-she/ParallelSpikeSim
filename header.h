@@ -26,25 +26,29 @@
 
 #define img_width 64	//for ROI
 #define img_len 64
-#define input_image_w 32	//for learning           for sc2 learning make 4x4
-#define input_image_l 32
-#define input_image_channel 3  //for learning           for sc2 learning make 13
+#define input_image_w 128	//for learning           for sc2 learning make 4x4;  for dvs is 128
+#define input_image_l 128
+#define input_image_channel 2  //for learning           for sc2 learning make 13
 #define non_random_weight_init 0
-#define shuffle_image 1
-#define MAX_CONNECTION 1000
-#define MAX_LOCAL_INHIBITION 100
-#define CNN_total_layer_num 3 //this includes input layer
-#define MAX_depth_in_one_layer 1100  //this includes input layer
+#define shuffle_image 0
+#define MAX_CONNECTION 3300
+#define MAX_LOCAL_INHIBITION 20
+#define CNN_total_layer_num 4//this includes input layer
+#define MAX_depth_in_one_layer 256  //this includes input layer
 //MODE Select
 #define depth_wise_inhibition 0
-#define through_depth_inhibition false
-#define apply_local_inhibition true
+#define through_depth_inhibition true
+#define apply_local_inhibition false
 #define forced_lateral_inhibition_at_last_layer false
 
 #define LOW_BIT_TRAINING 0
-#define STOCHASTIC_STDP 1
+#define STOCHASTIC_STDP 0
+#define EXPONENTIAL_STDP 1
 #define STOCHASTIC_ROUNDING 0
 #define HOMEOSTASIS_ENABLE 0
+#define HOMEOSTASIS_BASE_RATE 0.004
+#define LEARNER_HOMEOSTASIS_ENABLE 0
+#define SPIKE_FREQ_SAMPLING_INTV 10000
 #define LAYERWISE_SHARED_WEIGHT 1
 #define FREQUENCY_DEPENDED_STDP 0
 #define ThreadsPerBlock 8
@@ -52,7 +56,7 @@
 #define OUTPUT_LAYER_NEURON_NUM 1000
 #define MID_LAYER_STDP_DURATION 25
 #define HOMEOSTASIS_UPDATE_FREQUENCY 50000
-#define LOW_BIT_NUM 4
+#define LOW_BIT_NUM 8
 #define LOW_BIT_MEM_POT 0
 #define DEVICE_VARIATION 0
 #define TWO_POWER_2 4
@@ -67,7 +71,8 @@ using namespace std;
 typedef struct {
 	signed int index;	//start with 1
 	signed int type;	//0: IZH, 1: Stochastic, 2: LIF, 3: HH
-
+	float spike_frequency;
+	float spike_cnt;
 	float param[8]; //Izh has 5 parameters, a b c d threshold; LIF has, 1 is threshold, 2 is reset
 
 	float state[8]; //Izh has 3 states, 0 is membrane potential, 1 is V Flag
@@ -84,7 +89,8 @@ typedef struct {
 typedef struct {
 	signed int index;	//start with 1
 	signed int type;	//0: IZH, 1: Stochastic, 2: LIF, 3: HH
-
+	float spike_frequency;
+	float spike_cnt;
 	float param[8]; //Izh has 5 parameters, a b c d threshold; LIF has
 
 	float state[8]; //Izh has 3 states, U V Flag
@@ -149,6 +155,14 @@ typedef struct {
 	void* d_workspace{nullptr};
 } Convolution_setting_struct;
 
+typedef struct {
+	int loc_x;
+	int loc_y;
+	unsigned long time;
+	int sign;
+	bool valid;
+} Event_Camera_Input;
+
 //void kernel_neuron(Neuron *NeuronList, Neuron *old_device_neurons, float *random_number, int network_size);
 //void kernel_Stochastic(Neuron *NeuronList, float *random_number, int network_size);
 int read_neuron_list(Neuron *NeuronList, int neuron_model, string file_name);
@@ -168,13 +182,18 @@ void MNIST_labeling_2(Neuron *NeuronList, float *img_raw, float *output_v, int o
 int convolution_kernel(Convolution_setting_struct convolution_settings, int layer_index, float **d_input, float **filter, float **output, float *probe);
 void img_util(float *img_data, string file_name, int function_select);
 int network_config_generator(int function_select, CNN_struct *settings);
+int hsnn_config_generator(int* depth_list, CNN_struct *settings);
 //void synapse_drive_cnn(Neuron *NeuronList, CNN_struct *host_CNN_settings, CNN_struct *CNN_settings, float **filter, int current_layer, int network_size, int syn_timer_max, int connection_size, float *random_number, float StochSTDP_param_1, float StochSTDP_param_2);
-void synapse_drive_cnn_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *host_CNN_settings, CNN_struct *CNN_settings, float **filter, int current_layer, int network_size, int input_neuron_size, int syn_timer_max, int connection_size, float *random_number, float *random_number_normal_device, curandState_t *state, float StochSTDP_param_1, float StochSTDP_param_2);
+void synapse_drive_cnn_v2(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *host_CNN_settings, CNN_struct *CNN_settings, float **filter, int current_layer, int network_size, int input_neuron_size, int syn_timer_max, int connection_size, float *random_number, float *random_number_normal_device, curandState_t *state, float StochSTDP_param_1, float StochSTDP_param_2, float *log_total_spike);
 int filter_util(CNN_struct *settings, Neuron *NeuronList, int network_size, int input_neuron_size, float **host_filter_array, float **device_filter_array, string plot_prefix, int function_select);
 int CNN_util(CNN_struct *settings, float **d_instance_matrix_array, float **d_convolution_result_array, float **h_instance_matrix_array, float **h_convolution_result_array, int function_select);
 void spiking_cnn_main(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *CNN_setttings, float *random_number, float **input, float **instance_matrix, int current_layer, int network_size, int input_size, float *log_v, float *log_spike, float *log_total_spike, int *spike_flag, int signal_width, float input_float, int time_stamp, bool enable_inhibition);
+void spiking_cnn_main_event_based (Neuron *NeuronList, Input_neuron *Input_neuronlist, Event_Camera_Input *events, int event_cnt, CNN_struct *host_CNN_setttings, CNN_struct *CNN_setttings, float *random_number, float **input, float **instance_matrix, int current_layer, int network_size, int input_size, float *log_v, float *log_spike, float *log_total_spike, int *spike_flag, int signal_width, float input_float, int time_stamp, bool enable_inhibition);
 int convolution_kernel_setup(Convolution_setting_struct *convolution_settings, CNN_struct *settings, int layer_index);
 void spiking_cnn_main(Neuron *NeuronList, Input_neuron *Input_neuronlist, CNN_struct *CNN_setttings, float *random_number, float **input, float **instance_matrix, int current_layer, int network_size, int input_size, float *log_v, float *log_spike, float *log_total_spike, int *spike_flag, int signal_width, float input_float, int time_stamp, int optional_inp, bool teaching_mode);
+int normalize_weight(Neuron *NeuronList, float start_depth, float end_depth, int norm_method, int network_size);
+int reset_weight(Neuron *NeuronList, float start_depth, float end_depth, int reset_method, int network_size);
+int read_neuron_list_special(Neuron *NeuronList, int duplicate_layer, CNN_struct *settings, string file_name);
 /*
 void test_function(int a);
 //vector<Neuron> read_script(string file_path);
@@ -197,18 +216,26 @@ __global__ void change_threshold (Neuron *NeuronList, int network_size, float st
 __global__ void lateral_inhibition_depth_wise_mother_thread (Neuron *NeuronList, int network_size, int depth_ind_to_learn, int inhibit_time, CNN_struct *CNN_setttings, float *spike_flag, int total_depth_number);
 __global__ void lateral_inhibition_mother_thread (Neuron *NeuronList, int network_size, int layer_ind_to_learn, int inhibit_time, CNN_struct *CNN_setttings, int *spike_flag);
 __global__ void lateral_inhibition_child (Neuron *NeuronList, int network_size, int inhibit_time, float start_depth, float end_depth, int depth_iter);
+__global__ void reset_membrane_potential (Neuron *NeuronList, int network_size, float start_depth, float end_depth);
+__global__ void reset_all_state (Neuron *NeuronList, int network_size, float start_depth, float end_depth);
+__global__ void update_param (Neuron *NeuronList, int network_size, float start_depth, float end_depth, int target_param, float target_value);
+
 
 void copy_filter_to_cuDNN(Neuron *NeuronList, CNN_struct *CNN_settings, float **filter, int spiking_neuron_size);
 //==========learning options==============
 void run_cnn(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
 float spiking_learning_label(string network_data, string flag_file, int input_index, int num_test, int function_select, int data_set_select);
 void run_cnn_multilayer(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
-
+void run_autotune(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
 void run_time_sequence(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
 void run_sc2(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
+void run_event_based_learning(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
+void run_event_based_learning_hsnn(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img, int resume_learning, int start_layer);
 //==========inference options==============
 void run_cnn_multilayer_inference(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
-
+void run_autotune_inference(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
+void run_event_based_inference(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
+void run_event_based_inference_hsnn(string index_prefix, float input_float, float input_float_2, int input_int, int input_int_2, string input_img);
 //==========data reader===================
 void read_filter_data(string image_file, float *image, int num, int pixel_num);
 void CIFAR_read_image_one_channel(float *image, int image_size, int channel, int data_set_choise);
@@ -225,4 +252,9 @@ void read_sc2_2(string image_file, float *image, int num);
 void read_sc2_3(string image_file, float *image, int num);
 void read_polygon(string folder_to_read, float *image, int num);
 void read_one_image(string dir_to_read, float *image, int num);
+void DVS_read_image_8bit(string image_file, float *image , int num);
+void NTU_skeleton_read_image(string image_file, float *image , int num, int offset);
+int IBM_DVS128_event_based(string file_name, Event_Camera_Input *events, int image_size, int total_img_num);
+int IBM_DVS128_event_based_one_line(string file_name, Event_Camera_Input *events, int this_file_total_line, int target_line);
+int IBM_DVS128_event_based_count_line(string file_name);
 #endif /* HEADER_H_ */
