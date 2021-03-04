@@ -7,7 +7,7 @@ PSS is first introduced in [paper](https://ieeexplore.ieee.org/abstract/document
 - Spiking convolutional neural network
 - Frequency-dependent STDP
 - Process in memory (ReRAM) hardware simulation
-- Heterogeneous SPike Neural Network
+- Heterogeneous Spiking Neural Network
 
 If you use PSS in your work, please cite this [paper](https://ieeexplore.ieee.org/abstract/document/8714846).
 
